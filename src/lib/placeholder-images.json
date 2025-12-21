@@ -1,0 +1,34 @@
+{
+  "placeholderImages": [
+    {
+      "id": "candidate-1",
+      "description": "Photo of a smiling woman",
+      "imageUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxwZXJzb24lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NjM0NzE1OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "candidate-2",
+      "description": "Photo of a smiling man",
+      "imageUrl": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxwZXJzb24lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NjM0NzE1OTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "candidate-3",
+      "description": "Photo of a person looking professional",
+      "imageUrl": "https://images.unsplash.com/photo-1573496527892-904f897eb744?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBwZXJzb258ZW58MHx8fHwxNzYzNTIxMTE1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "professional person"
+    },
+    {
+      "id": "candidate-4",
+      "description": "Photo of a person in a suit",
+      "imageUrl": "https://images.unsplash.com/photo-1599557527416-a50090d005b4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxwZXJzb24lMjBzdWl0fGVufDB8fHx8MTc2MzQ3ODkzM3ww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person suit"
+    },
+    {
+      "id": "default-avatar",
+      "description": "Default avatar image",
+      "imageUrl": "https://images.unsplash.com/photo-1691519965828-60f18f205741?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxhdmF0YXIlMjBwbGFjZWhvbGRlcnxlbnwwfHx8fDE3NjM1MjkyNDd8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "avatar placeholder"
+    }
+  ]
+}

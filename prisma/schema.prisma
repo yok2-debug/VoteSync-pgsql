@@ -1,0 +1,140 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id          String    @id
+  name        String    @unique
+  permissions String[]  @default([])
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  users AppUser[]
+
+  @@map("roles")
+}
+
+model AppUser {
+  id        String   @id
+  username  String   @unique
+  password  String
+  roleId    String?  @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  role Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  @@index([username], name: "idx_app_users_username")
+  @@map("app_users")
+}
+
+model Category {
+  id               String   @id
+  name             String
+  slug             String?
+  allowedElections String[] @default([]) @map("allowed_elections")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  voters Voter[]
+
+  @@map("categories")
+}
+
+model Voter {
+  id         String   @id
+  name       String
+  categoryId String?  @map("category_id")
+  password   String
+  nik        String?
+  birthPlace String?  @map("birth_place")
+  birthDate  String?  @map("birth_date")
+  gender     String?
+  address    String?
+  hasVoted   Json     @default("{}") @map("has_voted")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([categoryId], name: "idx_voters_category")
+  @@map("voters")
+}
+
+model Election {
+  id                String    @id
+  name              String
+  description       String?
+  startDate         String?   @map("start_date")
+  endDate           String?   @map("end_date")
+  status            String    @default("pending")
+  allowedCategories String[]  @default([]) @map("allowed_categories")
+  useWitnesses      Boolean   @default(false) @map("use_witnesses")
+  showInRealCount   Boolean   @default(false) @map("show_in_real_count")
+  isMainInRealCount Boolean   @default(false) @map("is_main_in_real_count")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  candidates Candidate[]
+  votes      Vote[]
+
+  @@map("elections")
+}
+
+model Candidate {
+  id                String   @id
+  electionId        String   @map("election_id")
+  name              String
+  viceCandidateName String?  @map("vice_candidate_name")
+  vision            String?
+  mission           String?
+  photoUrl          String?  @map("photo_url")
+  orderNumber       Int      @default(1) @map("order_number")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  votes    Vote[]
+
+  @@index([electionId], name: "idx_candidates_election")
+  @@map("candidates")
+}
+
+model Vote {
+  id          String   @id @default(uuid())
+  electionId  String   @map("election_id")
+  candidateId String   @map("candidate_id")
+  voterIdHash String   @map("voter_id_hash")
+  timestamp   BigInt
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  election  Election  @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([electionId, voterIdHash])
+  @@index([electionId], name: "idx_votes_election")
+  @@index([candidateId], name: "idx_votes_candidate")
+  @@map("votes")
+}
+
+model Committee {
+  id          String   @id
+  name        String
+  electionIds String[] @default([]) @map("election_ids")
+  members     Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("committees")
+}
+
+model Setting {
+  key       String   @id
+  value     Json?
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
