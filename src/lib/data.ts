@@ -62,7 +62,7 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
       return [];
     }
 
-    return users.map((u) => ({
+    return users.map((u: { id: string; username: string; password: string; roleId: string | null }) => ({
       id: u.id,
       username: u.username,
       password: u.password,
@@ -81,7 +81,7 @@ export async function getRoles(): Promise<Role[]> {
       return [];
     }
 
-    return roles.map((r) => ({
+    return roles.map((r: { id: string; name: string; permissions: string[] }) => ({
       id: r.id,
       name: r.name,
       permissions: r.permissions as Permission[],

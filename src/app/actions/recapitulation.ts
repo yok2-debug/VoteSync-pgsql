@@ -37,7 +37,7 @@ export async function getRecapitulationStats(electionId: string): Promise<{ succ
             };
         }
 
-        const voterList = votersData.map((v) => ({
+        const voterList = votersData.map((v: { id: string; name: string; categoryId: string | null; gender: string | null; hasVoted: unknown }) => ({
             id: v.id,
             name: v.name,
             category: v.categoryId || '',

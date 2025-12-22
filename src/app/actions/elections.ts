@@ -20,7 +20,7 @@ export async function getElections(): Promise<{ success: boolean; data?: Electio
 
         const candidatesByElection: Record<string, Record<string, Candidate>> = {};
         if (candidatesData) {
-            candidatesData.forEach((c) => {
+            candidatesData.forEach((c: { id: string; electionId: string; name: string; viceCandidateName: string | null; vision: string | null; mission: string | null; photoUrl: string | null; orderNumber: number }) => {
                 if (!candidatesByElection[c.electionId]) {
                     candidatesByElection[c.electionId] = {};
                 }
@@ -36,7 +36,7 @@ export async function getElections(): Promise<{ success: boolean; data?: Electio
             });
         }
 
-        const elections = electionsData.map((e) => ({
+        const elections = electionsData.map((e: { id: string; name: string; description: string | null; startDate: string | null; endDate: string | null; status: string; useWitnesses: boolean; showInRealCount: boolean; isMainInRealCount: boolean }) => ({
             id: e.id,
             name: e.name,
             description: e.description || undefined,
@@ -79,7 +79,7 @@ export async function getElection(id: string): Promise<{ success: boolean; data?
 
         const candidates: Record<string, Candidate> = {};
         if (candidatesData) {
-            candidatesData.forEach((c) => {
+            candidatesData.forEach((c: { id: string; electionId: string; name: string; viceCandidateName: string | null; vision: string | null; mission: string | null; photoUrl: string | null; orderNumber: number }) => {
                 candidates[c.id] = {
                     id: c.id,
                     name: c.name,
@@ -101,7 +101,7 @@ export async function getElection(id: string): Promise<{ success: boolean; data?
         // Count votes per candidate
         const results: Record<string, number> = {};
         if (votesData) {
-            votesData.forEach((v) => {
+            votesData.forEach((v: { candidateId: string }) => {
                 if (!results[v.candidateId]) {
                     results[v.candidateId] = 0;
                 }

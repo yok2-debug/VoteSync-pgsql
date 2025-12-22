@@ -9,7 +9,7 @@ export async function GET() {
     const categories = await prisma.category.findMany();
 
     // Map database fields to frontend fields
-    const mappedCategories = (categories || []).map((c) => ({
+    const mappedCategories = (categories || []).map((c: { id: string; name: string; slug: string | null; allowedElections: string[] }) => ({
       id: c.id,
       name: c.name,
       slug: c.slug,

@@ -15,7 +15,7 @@ export async function getCategories(): Promise<{ success: boolean; data?: Catego
             return { success: true, data: [] };
         }
 
-        const categories = categoriesData.map((c) => ({
+        const categories = categoriesData.map((c: { id: string; name: string; allowedElections: string[] }) => ({
             id: c.id,
             name: c.name,
             allowedElections: c.allowedElections || [],

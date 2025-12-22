@@ -16,7 +16,7 @@ export async function getAdminUsers(): Promise<{ success: boolean; data?: AdminU
         }
 
         // Map to AdminUser type and remove passwords
-        const sanitizedUsers = users.map((u) => ({
+        const sanitizedUsers = users.map((u: { id: string; username: string; roleId: string | null }) => ({
             id: u.id,
             username: u.username,
             roleId: u.roleId || '',

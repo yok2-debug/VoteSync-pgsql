@@ -7,6 +7,11 @@ import { encrypt, decrypt } from './auth';
 const ADMIN_SESSION_COOKIE_NAME = 'votesync_admin_session';
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// Allow overriding secure cookie via env var (useful for HTTP in production-like environments)
+const isSecureCookie = process.env.COOKIE_SECURE === 'false'
+  ? false
+  : process.env.NODE_ENV === 'production';
+
 export async function createAdminSession(payload: Omit<AdminSessionPayload, 'expires'>) {
   const expires = new Date(Date.now() + SESSION_DURATION);
   const session = await encrypt(payload);
@@ -15,7 +20,7 @@ export async function createAdminSession(payload: Omit<AdminSessionPayload, 'exp
 
   cookieStore.set(ADMIN_SESSION_COOKIE_NAME, session, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecureCookie,
     expires: expires,
     path: '/',
     sameSite: 'lax',
@@ -57,7 +62,7 @@ export async function createVoterSession(payload: Omit<VoterSessionPayload, 'exp
 
   cookieStore.set(VOTER_SESSION_COOKIE_NAME, session, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isSecureCookie,
     expires: expires,
     path: '/',
     sameSite: 'lax',

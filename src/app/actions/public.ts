@@ -19,7 +19,7 @@ export async function getPublicElections(): Promise<{ success: boolean; data?: E
 
         const candidatesByElection: Record<string, Record<string, Candidate>> = {};
         if (candidatesData) {
-            candidatesData.forEach((c) => {
+            candidatesData.forEach((c: { id: string; electionId: string; name: string; viceCandidateName: string | null; vision: string | null; mission: string | null; photoUrl: string | null; orderNumber: number }) => {
                 if (!candidatesByElection[c.electionId]) {
                     candidatesByElection[c.electionId] = {};
                 }
@@ -43,7 +43,7 @@ export async function getPublicElections(): Promise<{ success: boolean; data?: E
         // Count votes per election and candidate
         const resultsByElection: Record<string, Record<string, number>> = {};
         if (votesData) {
-            votesData.forEach((v) => {
+            votesData.forEach((v: { electionId: string; candidateId: string }) => {
                 if (!resultsByElection[v.electionId]) {
                     resultsByElection[v.electionId] = {};
                 }
@@ -54,7 +54,7 @@ export async function getPublicElections(): Promise<{ success: boolean; data?: E
             });
         }
 
-        const elections = electionsData.map((e) => ({
+        const elections = electionsData.map((e: { id: string; name: string; description: string | null; startDate: string | null; endDate: string | null; status: string; useWitnesses: boolean; showInRealCount: boolean; isMainInRealCount: boolean }) => ({
             id: e.id,
             name: e.name,
             description: e.description || undefined,
@@ -84,7 +84,7 @@ export async function getPublicCategories(): Promise<{ success: boolean; data?: 
             return { success: true, data: [] };
         }
 
-        const categories = categoriesData.map((c) => ({
+        const categories = categoriesData.map((c: { id: string; name: string; allowedElections: string[] }) => ({
             id: c.id,
             name: c.name,
             allowedElections: c.allowedElections || [],

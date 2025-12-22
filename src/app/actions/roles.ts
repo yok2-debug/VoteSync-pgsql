@@ -15,7 +15,7 @@ export async function getRoles(): Promise<{ success: boolean; data?: Role[]; mes
             return { success: true, data: [] };
         }
 
-        const roles = rolesData.map((r) => ({
+        const roles = rolesData.map((r: { id: string; name: string; permissions: string[] }) => ({
             id: r.id,
             name: r.name,
             permissions: r.permissions || [],

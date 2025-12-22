@@ -41,15 +41,9 @@ Aplikasi ini dibangun menggunakan:
 
 ---
 
-## 🚀 Instalasi dan Menjalankan
+## 🚀 Instalasi dan Deployment
 
-Ikuti langkah ini untuk menjalankan aplikasi di lingkungan lokal Anda.
-
-### Prasyarat
-- Node.js (v18+)
-- PostgreSQL Database
-
-### Langkah-langkah
+### A. Development (Local)
 
 1. **Clone Repositori**
    ```bash
@@ -63,18 +57,17 @@ Ikuti langkah ini untuk menjalankan aplikasi di lingkungan lokal Anda.
    ```
 
 3. **Konfigurasi Environment**
-   Buat file `.env` di root project dan sesuaikan konfigurasi database dan keamanan Anda:
+   Buat file `.env` (copy dari `env.example`) dan sesuaikan:
 
    ```env
-   # Koneksi Database PostgreSQL (Format Prisma)
+   # Koneksi Database PostgreSQL
    DATABASE_URL="postgresql://user:password@localhost:5432/votesync_db?schema=public"
 
-   # Kunci Rahasia untuk JWT Session (Gunakan string acak yang panjang dan aman)
+   # Secret Key untuk Session
    JWT_SECRET_KEY="rahasia_super_aman_anda_disini"
    ```
 
 4. **Setup Database**
-   Jalankan migrasi Prisma untuk membuat tabel-tabel database:
    ```bash
    npx prisma migrate dev
    ```
@@ -84,6 +77,50 @@ Ikuti langkah ini untuk menjalankan aplikasi di lingkungan lokal Anda.
    npm run dev
    ```
    Akses aplikasi di [http://localhost:3000](http://localhost:3000).
+
+### B. Deployment ke VPS (Production)
+
+1. **Persiapan Server**
+   Pastikan Node.js (v18+) dan PostgreSQL sudah terinstall.
+
+2. **Environment Variables**
+   Buat file `.env` di server. Penting untuk menambahkan `COOKIE_SECURE` jika Anda tidak menggunakan HTTPS.
+
+   ```env
+   DATABASE_URL="postgresql://user:password@localhost:5432/votesync_production"
+   JWT_SECRET_KEY="string_acak_yang_sangat_panjang_dan_aman"
+   
+   # PENTING: Set "false" jika akses via HTTP (tanpa SSL/HTTPS)
+   # Jika menggunakan HTTPS (rekomendasi), set "true" atau hapus baris ini
+   COOKIE_SECURE="false"
+   ```
+
+3. **Build dan Migrasi**
+   ```bash
+   # Install dependencies
+   npm install
+
+   # Build aplikasi
+   npm run build
+
+   # Jalankan migrasi database production
+   npx prisma migrate deploy
+   ```
+
+4. **Jalankan Aplikasi**
+   
+   **Mode Manual:**
+   ```bash
+   npm start
+   ```
+
+   **Menggunakan PM2 (Rekomendasi):**
+   ```bash
+   npm install -g pm2
+   pm2 start npm --name "votesync" -- start
+   pm2 save
+   pm2 startup
+   ```
 
 ---
 

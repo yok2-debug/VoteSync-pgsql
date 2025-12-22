@@ -22,7 +22,7 @@ export async function getCommittees(): Promise<{ success: boolean; data?: Commit
             return { success: true, data: [] };
         }
 
-        const committees = committeesData.map((c) => ({
+        const committees = committeesData.map((c: { id: string; name: string; electionIds: string[]; members: unknown; createdAt: Date; updatedAt: Date }) => ({
             id: c.id,
             name: c.name,
             electionIds: c.electionIds || [],
@@ -290,8 +290,8 @@ export async function getCommitteesForElection(
         }
 
         const linkedCommittees = committeesData
-            .filter((c) => c.electionIds && c.electionIds.includes(electionId))
-            .map((c) => ({
+            .filter((c: { id: string; name: string; electionIds: string[]; members: unknown; createdAt: Date; updatedAt: Date }) => c.electionIds && c.electionIds.includes(electionId))
+            .map((c: { id: string; name: string; electionIds: string[]; members: unknown; createdAt: Date; updatedAt: Date }) => ({
                 id: c.id,
                 name: c.name,
                 electionIds: c.electionIds || [],
