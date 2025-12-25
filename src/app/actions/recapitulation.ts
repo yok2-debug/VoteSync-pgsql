@@ -49,7 +49,7 @@ export async function getRecapitulationStats(electionId: string): Promise<{ succ
 
         // Filter voters allowed for this election
         const allowedCategoryIds = new Set(
-            categories.filter(c => c.allowedElections?.includes(electionId)).map(c => c.id)
+            categories.filter((c: Category) => c.allowedElections?.includes(electionId)).map((c: Category) => c.id)
         );
         const votersForThisElection = voterList.filter(v => allowedCategoryIds.has(v.category));
 
