@@ -155,7 +155,7 @@ export function VoteClientPage() {
                   <Dialog>
                     <DialogTrigger asChild>
                       <Image
-                        src={candidate.photo || defaultAvatar?.imageUrl || 'https://picsum.photos/seed/default/400/400'}
+                        src={candidate.photo || defaultAvatar?.imageUrl || '/foto-kosong.png'}
                         alt={`Photo of ${candidate.name}`}
                         width={160}
                         height={160}
@@ -171,7 +171,7 @@ export function VoteClientPage() {
                       </DialogHeader>
                       <DialogClose asChild>
                         <Image
-                          src={candidate.photo || defaultAvatar?.imageUrl || 'https://picsum.photos/seed/default/400/400'}
+                          src={candidate.photo || defaultAvatar?.imageUrl || '/foto-kosong.png'}
                           alt={`Photo of ${candidate.name}`}
                           width={400}
                           height={400}

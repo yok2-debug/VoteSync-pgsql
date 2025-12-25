@@ -47,7 +47,7 @@ Aplikasi ini dibangun menggunakan:
 
 1. **Clone Repositori**
    ```bash
-   git clone https://github.com/yok2-debug/VoteSync-pgsql.git
+   git clone https://github.com/yok2-debug/VoteSync.git
    cd VoteSync
    ```
 

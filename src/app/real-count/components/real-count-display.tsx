@@ -141,7 +141,7 @@ export function RealCountDisplay({ election, categories, voterCounts, isMain }: 
                   <div className="flex items-center justify-between gap-4">
                     <div className='flex items-center gap-2 flex-1 min-w-0'>
                       <Image
-                        src={candidate.photo || defaultAvatar?.imageUrl || '/placeholder.png'}
+                        src={candidate.photo || defaultAvatar?.imageUrl || '/foto-kosong.png'}
                         alt={`Foto ${candidate.name}`}
                         width={24}
                         height={24}

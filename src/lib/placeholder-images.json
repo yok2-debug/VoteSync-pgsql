@@ -27,7 +27,7 @@
     {
       "id": "default-avatar",
       "description": "Default avatar image",
-      "imageUrl": "https://images.unsplash.com/photo-1691519965828-60f18f205741?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxhdmF0YXIlMjBwbGFjZWhvbGRlcnxlbnwwfHx8fDE3NjM1MjkyNDd8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageUrl": "/foto-kosong.png",
       "imageHint": "avatar placeholder"
     }
   ]
