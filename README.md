@@ -184,7 +184,7 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
    ```bash
    docker compose up -d --build
    ```
-   > ⚠️ Proses build pertama kali memakan waktu beberapa menit karena RAM VM yang terbatas. Swap akan digunakan secara otomatis. Harap bersabar.
+   > ⚠️ Proses build pertama kali memakan waktu beberapa menit jika RAM VM yang terbatas. Swap akan digunakan secara otomatis. Harap bersabar.
 
 5. **Pastikan Container Berjalan**
    Periksa status container setelah build selesai:
