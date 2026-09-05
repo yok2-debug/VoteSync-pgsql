@@ -1,18 +1,54 @@
 version: '3.8'
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: votesync-app
+    restart: "no"
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://votesync:PASSWORD_ANDA@postgres:5432/votesync
+      - JWT_SECRET_KEY=string_acak_yang_sangat_panjang_dan_aman
+      - COOKIE_SECURE=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    environment:
+      - DATABASE_URL=postgresql://votesync:PASSWORD_ANDA@postgres:5432/votesync
+      - JWT_SECRET_KEY=string_acak_yang_sangat_panjang_dan_aman
+    command: sh -c "npx prisma db push && node prisma/seed.js"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
+
   postgres:
     image: postgres:16-alpine
     container_name: votesync-db
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_USER: votesync
-      POSTGRES_PASSWORD: votesync_password
+      POSTGRES_PASSWORD: PASSWORD_ANDA
       POSTGRES_DB: votesync
     ports:
       - "5432:5432"
     volumes:
       - votesync_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U votesync"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   votesync_pgdata:

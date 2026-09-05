@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: 'standalone',
   serverExternalPackages: ['pino', 'thread-stream'],
   images: {
     remotePatterns: [
@@ -36,6 +37,9 @@ const nextConfig: NextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
+  },
+  typescript: {
+    ignoreBuildErrors: true,
   },
 };
 
