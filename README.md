@@ -64,14 +64,27 @@ Aplikasi ini dibangun menggunakan:
    ```
    Isi file `.env`:
    ```env
-   # Koneksi Database PostgreSQL
-   DATABASE_URL="postgresql://user:password@localhost:5432/votesync"
+   # ----- Keamanan -----
 
-   # Secret Key untuk Session JWT (gunakan string acak yang kuat)
-   JWT_SECRET_KEY="rahasia_super_aman_anda_disini"
+   # Generate dengan: openssl rand -hex 32
+   JWT_SECRET_KEY="paste-hasil-openssl-rand-hex-32-disini"
 
-   # Set "false" jika akses via HTTP (tanpa HTTPS) — aktifkan untuk dev lokal
+   # Salt untuk anonymisasi suara (SHA-256). JANGAN diubah setelah pemilihan berjalan!
+   # Generate dengan: openssl rand -hex 32
+   VOTE_SECRET_SALT="paste-hasil-openssl-rand-hex-32-yang-berbeda-disini"
+
+   # ----- Cookie -----
+   # Set "false" jika akses via HTTP (tanpa HTTPS)
    COOKIE_SECURE="false"
+
+   # ----- Database PostgreSQL -----
+   POSTGRES_USER="votesync"
+   POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
+   POSTGRES_DB="votesync"
+   POSTGRES_PORT="5432"
+
+   # ----- Aplikasi -----
+   APP_PORT="3000"
    ```
 
 4. **Setup Database**
@@ -102,12 +115,27 @@ Aplikasi ini dibangun menggunakan:
    Buat file `.env` di server. Sesuaikan dengan kredensial database dan akses HTTP/HTTPS Anda:
 
    ```env
-   DATABASE_URL="postgresql://user:password@localhost:5432/votesync"
-   JWT_SECRET_KEY="string_acak_yang_sangat_panjang_dan_aman"
+   # ----- Keamanan -----
 
-   # PENTING: Set "false" jika akses via HTTP (tanpa SSL/HTTPS)
-   # Jika menggunakan HTTPS (rekomendasi), hapus baris ini
+   # Generate dengan: openssl rand -hex 32
+   JWT_SECRET_KEY="paste-hasil-openssl-rand-hex-32-disini"
+
+   # Salt untuk anonymisasi suara (SHA-256). JANGAN diubah setelah pemilihan berjalan!
+   # Generate dengan: openssl rand -hex 32
+   VOTE_SECRET_SALT="paste-hasil-openssl-rand-hex-32-yang-berbeda-disini"
+
+   # ----- Cookie -----
+   # Set "false" jika akses via HTTP (tanpa HTTPS)
    COOKIE_SECURE="false"
+
+   # ----- Database PostgreSQL -----
+   POSTGRES_USER="votesync"
+   POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
+   POSTGRES_DB="votesync"
+   POSTGRES_PORT="5432"
+
+   # ----- Aplikasi -----
+   APP_PORT="3000"
    ```
 
 3. **Install, Migrasi, dan Seed**
@@ -140,7 +168,7 @@ Aplikasi ini dibangun menggunakan:
    pm2 startup
    ```
 
-### C. Deployment Menggunakan Docker (Rekomendasi untuk Linux / Debian VM)
+### C. Deployment Menggunakan Docker
 
 Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secara terisolasi menggunakan Docker Compose. Seluruh konfigurasi sensitif dikelola melalui **satu file `.env`** — tidak ada kredensial yang tertanam langsung di dalam `docker-compose.yml`.
 
@@ -268,6 +296,55 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
     docker load -i postgres.tar
     ```
     > ⚠️ File `.tar` hanya menyimpan **image** (blueprint aplikasi), **bukan data database**. Selalu backup data secara terpisah menggunakan `pg_dump` (lihat langkah 9).
+
+### D. Deployment Menggunakan Portainer (Via Git Repository)
+
+Jika server/VPS Anda menggunakan **Portainer**, cara terbaik dan paling direkomendasikan adalah menggunakan metode **Repository (Git)** yang terhubung langsung dengan repositori GitHub: `https://github.com/yok2-debug/VoteSync-pgsql`.
+
+1. **Buka Portainer**
+   - Masuk ke dashboard Portainer Anda.
+   - Pilih environment Anda (misal: **local**).
+   - Di menu sebelah kiri, pilih **Stacks** -> klik tombol **+ Add stack**.
+
+2. **Pilih Metode Repository**
+   - **Name**: Masukkan nama stack, contoh: `votesync`.
+   - **Build method**: Pilih **Repository**.
+   - **Repository URL**: `https://github.com/yok2-debug/VoteSync-pgsql`
+   - **Repository reference**: `refs/heads/main` (atau branch tempat Anda push).
+   - **Compose path**: `portainer-docker-compose.yml`
+   - *(Opsional)* **Automatic updates**: Aktifkan **Polling** atau **Webhook** jika ingin stack otomatis update/rebuild setiap kali Anda melakukan `git push` ke GitHub!
+
+3. **Konfigurasi Environment Variables di Portainer**
+   Gulir ke bawah ke bagian **Environment variables**.
+   Klik **Advanced mode** lalu tempel variabel-variabel berikut (sesuaikan nilainya):
+
+   ```env
+   POSTGRES_USER=votesync
+   POSTGRES_PASSWORD=ganti-dengan-password-kuat-anda
+   POSTGRES_DB=votesync
+   POSTGRES_PORT=5432
+   JWT_SECRET_KEY=isi-dengan-hasil-openssl-rand-hex-32
+   VOTE_SECRET_SALT=isi-dengan-hasil-openssl-rand-hex-32-yang-berbeda
+   COOKIE_SECURE=false
+   APP_PORT=3000
+   ```
+
+   > 💡 Gunakan `openssl rand -hex 32` di terminal untuk menghasilkan string acak aman untuk `JWT_SECRET_KEY` dan `VOTE_SECRET_SALT`.
+
+4. **Deploy Stack**
+   - Klik tombol **Deploy the stack**.
+   - Portainer akan otomatis men-clone repo GitHub Anda, mem-build image aplikasi, dan menjalankan container.
+
+5. **Inisialisasi Tabel Database + Akun Admin Default**
+   Setelah stack berstatus *running*, inisialisasi tabel dan akun admin dapat dilakukan via Portainer:
+   - Masuk ke menu **Containers** di Portainer.
+   - Klik ikon **Console** (`>_`) pada baris container `votesync-app`.
+   - Gunakan command `/bin/sh` lalu klik **Connect**.
+   - Jalankan perintah berikut:
+     ```bash
+     npx prisma db push && node prisma/seed.js
+     ```
+   - Akun Super Admin siap digunakan: **Username**: `admin` / **Password**: `admin`.
 
 ---
 
