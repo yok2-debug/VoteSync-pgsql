@@ -310,9 +310,9 @@ Jika server/VPS Anda menggunakan **Portainer**, cara terbaik dan paling direkome
    - **Name**: Masukkan nama stack, contoh: `votesync`.
    - **Build method**: Pilih **Repository**.
    - **Repository URL**: `https://github.com/yok2-debug/VoteSync-pgsql`
-   - **Repository reference**: `refs/heads/main` (atau branch tempat Anda push).
+   - **Repository reference**: `refs/heads/main`
    - **Compose path**: `portainer-docker-compose.yml`
-   - *(Opsional)* **Automatic updates**: Aktifkan **Polling** atau **Webhook** jika ingin stack otomatis update/rebuild setiap kali Anda melakukan `git push` ke GitHub!
+   - *(Opsional)* **Automatic updates**: Aktifkan **Polling** atau **Webhook** jika ingin stack otomatis update/rebuild
 
 3. **Konfigurasi Environment Variables di Portainer**
    Gulir ke bawah ke bagian **Environment variables**.
