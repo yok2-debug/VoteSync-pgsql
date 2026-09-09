@@ -142,7 +142,7 @@ Aplikasi ini dibangun menggunakan:
 
 ### C. Deployment Menggunakan Docker (Rekomendasi untuk Linux / Debian VM)
 
-Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secara terisolasi menggunakan Docker Compose. Pastikan file-file berikut sudah ada di direktori proyek Anda: `Dockerfile`, `.dockerignore`, `docker-compose.yml`.
+Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secara terisolasi menggunakan Docker Compose. Seluruh konfigurasi sensitif dikelola melalui **satu file `.env`** — tidak ada kredensial yang tertanam langsung di dalam `docker-compose.yml`.
 
 1. **Prasyarat**
    Pastikan Docker dan Docker Compose plugin sudah terinstal di server/VM Anda:
@@ -151,24 +151,43 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
    docker compose version
    ```
 
-2. **Konfigurasi `docker-compose.yml`**
-   Buka file `docker-compose.yml`, lalu sesuaikan nilai berikut:
-
-   - **Generate JWT Secret Key** yang kuat dengan perintah:
-     ```bash
-     openssl rand -hex 32
-     ```
-   - Masukkan hasil string tersebut ke baris `JWT_SECRET_KEY`.
-   - Sesuaikan `POSTGRES_PASSWORD` dan `DATABASE_URL` jika Anda ingin mengganti password database.
-   - Pastikan `COOKIE_SECURE=false` jika akses via HTTP (tanpa HTTPS).
-
-   Contoh konfigurasi service `app`:
-   ```yaml
-   environment:
-     - DATABASE_URL=postgresql://votesync:PASSWORD_ANDA@postgres:5432/votesync
-     - JWT_SECRET_KEY=paste_string_rahasia_anda_disini
-     - COOKIE_SECURE=false
+2. **Konfigurasi File `.env`**
+   Salin template konfigurasi dan isi nilainya:
+   ```bash
+   cp env.example .env
    ```
+   Kemudian edit file `.env` dan sesuaikan semua nilai berikut:
+
+   ```env
+   # ----- Keamanan -----
+
+   # Generate dengan: openssl rand -hex 32
+   JWT_SECRET_KEY="paste-hasil-openssl-rand-hex-32-disini"
+
+   # Salt untuk anonymisasi suara (SHA-256). JANGAN diubah setelah pemilihan berjalan!
+   # Generate dengan: openssl rand -hex 32
+   VOTE_SECRET_SALT="paste-hasil-openssl-rand-hex-32-yang-berbeda-disini"
+
+   # ----- Cookie -----
+   # Set "false" jika akses via HTTP (tanpa HTTPS)
+   COOKIE_SECURE="false"
+
+   # ----- Database PostgreSQL -----
+   POSTGRES_USER="votesync"
+   POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
+   POSTGRES_DB="votesync"
+   POSTGRES_PORT="5432"
+
+   # ----- Aplikasi -----
+   APP_PORT="3000"
+   ```
+
+   > 💡 **Generate secret key yang kuat** — jalankan perintah berikut **dua kali** (hasilnya harus berbeda untuk `JWT_SECRET_KEY` dan `VOTE_SECRET_SALT`):
+   > ```bash
+   > openssl rand -hex 32
+   > ```
+
+   > ⚠️ **Penting**: `VOTE_SECRET_SALT` digunakan untuk mengamankan anonimitas data suara. **Jangan pernah mengubah nilai ini** setelah pemilihan berjalan, karena sistem tidak akan bisa membaca suara yang sudah tercatat sebelumnya.
 
 3. **(Opsional) Reset Bersih dari Awal**
    Jika sebelumnya sudah pernah menjalankan container/volume lama dan ingin memulai ulang dari nol:
@@ -184,7 +203,7 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
    ```bash
    docker compose up -d --build
    ```
-   > ⚠️ Proses build pertama kali memakan waktu beberapa menit jika RAM VM yang terbatas. Swap akan digunakan secara otomatis. Harap bersabar.
+   > ⚠️ Proses build pertama kali memakan waktu beberapa menit jika RAM VM terbatas. Swap akan digunakan secara otomatis. Harap bersabar.
 
 5. **Pastikan Container Berjalan**
    Periksa status container setelah build selesai:
@@ -209,39 +228,46 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
    > Perintah ini menggunakan service `migrate` yang telah dikonfigurasi di `docker-compose.yml` dengan full `node_modules` (stage builder), sehingga kompatibel penuh dengan Prisma 7.
 
 7. **Akses Aplikasi**
-   - **Portal Publik**: `http://<IP-SERVER-ANDA>:3000`
-   - **Portal Admin**: `http://<IP-SERVER-ANDA>:3000/admin-login`
+   - **Portal Publik**: `http://<IP-SERVER-ANDA>:<APP_PORT>`
+   - **Portal Admin**: `http://<IP-SERVER-ANDA>:<APP_PORT>/admin-login`
    - Login pertama: **Username** `admin` / **Password** `admin`
 
+   > 🔑 Segera ganti password `admin` default setelah login pertama!
+
 8. **Perintah Pemeliharaan (Maintenance)**
-   - Melihat log aplikasi: `docker compose logs -f app`
-   - Melihat log database: `docker compose logs -f postgres`
-   - Menghentikan semua container: `docker compose stop`
-   - Menjalankan kembali: `docker compose start`
+
+   | Perintah | Fungsi |
+   |---|---|
+   | `docker compose logs -f app` | Melihat log aplikasi secara live |
+   | `docker compose logs -f postgres` | Melihat log database secara live |
+   | `docker compose stop` | Menghentikan semua container |
+   | `docker compose start` | Menjalankan kembali container yang berhenti |
+   | `docker compose down` | Menghentikan dan menghapus container (data tetap aman di volume) |
+   | `docker compose up -d --build` | Rebuild dan jalankan ulang (setelah update kode) |
 
 9. **Backup Data Database**
    Data database disimpan di Docker Volume (terpisah dari image). Gunakan `pg_dump` untuk backup:
    ```bash
-   # Backup data ke file SQL
-   docker exec votesync-db pg_dump -U votesync votesync > votesync-data.sql
+   # Backup data ke file SQL (dengan tanggal otomatis)
+   docker exec votesync-db pg_dump -U votesync votesync > votesync-backup-$(date +%Y%m%d).sql
 
    # Restore data dari file SQL
-   cat votesync-data.sql | docker exec -i votesync-db psql -U votesync -d votesync
+   cat votesync-backup-YYYYMMDD.sql | docker exec -i votesync-db psql -U votesync -d votesync
    ```
 
-10. **Menyimpan Image ke File `.tar` (Portabilitas)**
+10. **Menyimpan Image ke File `.tar` (Portabilitas / Offline Deploy)**
     ```bash
     # Simpan image aplikasi
-    docker save votesync-app -o votesync-app.tar
+    docker save votesync-votesync-app -o votesync-app.tar
 
     # Simpan image PostgreSQL
-    docker save postgres:16-alpine -o votesync-db.tar
+    docker save postgres:16-alpine -o postgres.tar
 
-    # Load image di server lain
+    # Load image di server lain (tidak perlu koneksi internet)
     docker load -i votesync-app.tar
-    docker load -i votesync-db.tar
+    docker load -i postgres.tar
     ```
-    > ⚠️ File `.tar` hanya menyimpan image (blueprint), **bukan data database**. Selalu backup data secara terpisah menggunakan `pg_dump` (lihat langkah 9).
+    > ⚠️ File `.tar` hanya menyimpan **image** (blueprint aplikasi), **bukan data database**. Selalu backup data secara terpisah menggunakan `pg_dump` (lihat langkah 9).
 
 ---
 
@@ -251,9 +277,12 @@ Jika Anda menjalankan seed database, akun administrator default biasanya adalah:
 - **Username**: `admin`
 - **Password**: `admin`
 
-*(Pastikan untuk mengubah password ini di environment produksi!)*
+*(Pastikan untuk mengubah password ini segera setelah login pertama di environment produksi!)*
 
 ## 📝 Catatan Keamanan
 
 - **Password Pemilih**: Aplikasi ini dikonfigurasi untuk menyimpan password pemilih dalam format **plain text**. Hal ini disengaja untuk memudahkan distribusi kredensial (cetak kartu fisik) kepada pemilih dalam lingkungan tertutup. Pastikan database Anda terlindungi dengan baik.
-- **Password Admin**: Password administrator tetap di-hash menggunakan bcrypt untuk keamanan.
+- **Password Admin**: Password administrator di-hash menggunakan bcrypt untuk keamanan.
+- **Anonimitas Suara**: Identitas pemilih dalam tabel suara disamarkan menggunakan **SHA-256 + VOTE_SECRET_SALT**, sehingga tidak ada yang bisa melacak siapa memilih siapa, bahkan dari dalam database.
+- **Validasi Voting**: Sistem memvalidasi status pemilihan (aktif/tidak aktif), rentang waktu (`startDate`/`endDate`), dan hak kategori pemilih sebelum suara diterima — voting tidak bisa dimanipulasi langsung melalui API.
+- **Hasil Real-time**: Data perolehan suara hanya dipublikasikan jika admin mengaktifkan fitur *Real Count*, atau setelah waktu `endDate` pemilihan terlampaui.

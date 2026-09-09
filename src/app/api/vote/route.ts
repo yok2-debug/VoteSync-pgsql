@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getVoterSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
+import crypto from 'crypto';
 
 export async function POST(request: Request) {
   try {
@@ -17,10 +18,62 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Akses ditolak. Sesi tidak valid.' }, { status: 403 });
     }
 
-    // Create vote hash for anonymity
-    const voterIdHash = Buffer.from(voterId).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
+    // Fetch Election and Voter data to validate constraints
+    const [election, voterData] = await Promise.all([
+      prisma.election.findUnique({ where: { id: electionId } }),
+      prisma.voter.findUnique({ where: { id: voterId } })
+    ]);
 
-    // Check if already voted using unique constraint
+    if (!election) {
+      return NextResponse.json({ message: 'Pemilihan tidak ditemukan.' }, { status: 404 });
+    }
+
+    if (!voterData) {
+      return NextResponse.json({ message: 'Pemilih tidak ditemukan.' }, { status: 404 });
+    }
+
+    // Validasi Status dan Waktu Pemilihan
+    const now = new Date();
+    if (election.status !== 'active') {
+      return NextResponse.json({ message: 'Pemilihan belum aktif atau sudah ditutup.' }, { status: 403 });
+    }
+    if (election.startDate && new Date(election.startDate) > now) {
+      return NextResponse.json({ message: 'Waktu pemilihan belum dimulai.' }, { status: 403 });
+    }
+    if (election.endDate && new Date(election.endDate) < now) {
+      return NextResponse.json({ message: 'Waktu pemilihan sudah ditutup.' }, { status: 403 });
+    }
+
+    // Validasi Kategori Pemilih
+    // Sumber kebenaran ada di Category.allowedElections, bukan Election.allowedCategories
+    if (!voterData.categoryId) {
+      return NextResponse.json({ message: 'Anda tidak memiliki hak suara untuk pemilihan ini.' }, { status: 403 });
+    }
+
+    const voterCategory = await prisma.category.findUnique({
+      where: { id: voterData.categoryId },
+      select: { allowedElections: true }
+    });
+
+    if (!voterCategory || !voterCategory.allowedElections.includes(electionId)) {
+      return NextResponse.json({ message: 'Anda tidak memiliki hak suara untuk pemilihan ini.' }, { status: 403 });
+    }
+
+    // Cek apakah sudah memilih (via field hasVoted di tabel Voter)
+    const hasVoted = (voterData.hasVoted as Record<string, boolean>) || {};
+    if (hasVoted[electionId]) {
+      return NextResponse.json({ message: 'Anda sudah memberikan suara dalam pemilihan ini.' }, { status: 409 });
+    }
+
+    // Create secure vote hash for anonymity
+    const VOTE_SECRET = process.env.VOTE_SECRET_SALT || 'default-secret-salt-change-me';
+    // Gunakan SHA-256 dan sertakan electionId agar unik per pemilihan jika salt sama
+    const voterIdHash = crypto
+      .createHash('sha256')
+      .update(voterId + electionId + VOTE_SECRET)
+      .digest('hex');
+
+    // Cek duplikasi di tabel Vote berdasarkan hash
     const existingVote = await prisma.vote.findUnique({
       where: {
         electionId_voterIdHash: {
@@ -34,39 +87,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Anda sudah memberikan suara dalam pemilihan ini.' }, { status: 409 });
     }
 
-    // Insert vote receipt
+    hasVoted[electionId] = true;
+
+    // Lakukan pencatatan suara dan update status pemilih secara Transaksional
     try {
-      await prisma.vote.create({
-        data: {
-          electionId,
-          candidateId,
-          voterIdHash,
-          timestamp: BigInt(Date.now()),
-        }
-      });
+      await prisma.$transaction([
+        prisma.vote.create({
+          data: {
+            electionId,
+            candidateId,
+            voterIdHash,
+            timestamp: BigInt(Date.now()),
+          }
+        }),
+        prisma.voter.update({
+          where: { id: voterId },
+          data: { hasVoted }
+        })
+      ]);
     } catch (error: any) {
-      // Handle unique constraint violation
+      // Handle unique constraint violation from parallel requests
       if (error.code === 'P2002') {
         return NextResponse.json({ message: 'Anda sudah memberikan suara dalam pemilihan ini.' }, { status: 409 });
       }
-      logger.error({ err: error }, 'Error inserting vote');
-      return NextResponse.json({ message: 'Gagal mencatat suara' }, { status: 500 });
-    }
-
-    // Update voter's hasVoted status
-    const voterData = await prisma.voter.findUnique({
-      where: { id: voterId },
-      select: { hasVoted: true }
-    });
-
-    if (voterData) {
-      const hasVoted = (voterData.hasVoted as Record<string, boolean>) || {};
-      hasVoted[electionId] = true;
-
-      await prisma.voter.update({
-        where: { id: voterId },
-        data: { hasVoted }
-      });
+      throw error; // Let the outer catch handle and log it
     }
 
     return NextResponse.json({

@@ -22,6 +22,7 @@ ENV NEXT_TELEMETRY_DISABLED 1
 # Provide a dummy DATABASE_URL to avoid errors if Prisma client is instantiated during the build
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 ENV JWT_SECRET_KEY="dummy_secret_key_for_build_only_12345"
+ENV VOTE_SECRET_SALT="dummy_vote_secret_salt_for_build_only"
 # Allow Node.js to use up to 4GB of memory during the build process
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 

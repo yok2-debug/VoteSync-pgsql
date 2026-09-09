@@ -54,19 +54,26 @@ export async function getPublicElections(): Promise<{ success: boolean; data?: E
             });
         }
 
-        const elections = electionsData.map((e: { id: string; name: string; description: string | null; startDate: string | null; endDate: string | null; status: string; useWitnesses: boolean; showInRealCount: boolean; isMainInRealCount: boolean }) => ({
-            id: e.id,
-            name: e.name,
-            description: e.description || undefined,
-            startDate: e.startDate || undefined,
-            endDate: e.endDate || undefined,
-            status: e.status as 'active' | 'pending',
-            useWitnesses: e.useWitnesses || false,
-            showInRealCount: e.showInRealCount || false,
-            isMainInRealCount: e.isMainInRealCount || false,
-            candidates: candidatesByElection[e.id] || {},
-            results: resultsByElection[e.id] || {},
-        })) as Election[];
+        const now = new Date();
+        const elections = electionsData.map((e: { id: string; name: string; description: string | null; startDate: string | null; endDate: string | null; status: string; useWitnesses: boolean; showInRealCount: boolean; isMainInRealCount: boolean }) => {
+            const endDate = e.endDate ? new Date(e.endDate) : null;
+            const isEnded = endDate ? now >= endDate : false;
+            const canShowResults = e.showInRealCount || isEnded;
+
+            return {
+                id: e.id,
+                name: e.name,
+                description: e.description || undefined,
+                startDate: e.startDate || undefined,
+                endDate: e.endDate || undefined,
+                status: e.status as 'active' | 'pending',
+                useWitnesses: e.useWitnesses || false,
+                showInRealCount: e.showInRealCount || false,
+                isMainInRealCount: e.isMainInRealCount || false,
+                candidates: candidatesByElection[e.id] || {},
+                results: canShowResults ? (resultsByElection[e.id] || {}) : {},
+            };
+        }) as Election[];
 
         return { success: true, data: elections };
     } catch (error) {

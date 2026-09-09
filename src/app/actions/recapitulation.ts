@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
 import { getCategories } from './categories';
-import type { Voter, Category } from '@/lib/types';
+import type { Category } from '@/lib/types';
 
 export interface RecapitulationStats {
     dpt: { total: number; male: number; female: number };
@@ -21,12 +21,15 @@ export async function getRecapitulationStats(electionId: string): Promise<{ succ
             await verifyAdminSession('voters');
         }
 
-        const [votersData, categoriesRes] = await Promise.all([
-            prisma.voter.findMany(),
-            getCategories()
-        ]);
+        // Fetch categories first to determine allowed categories for this election
+        const categoriesRes = await getCategories();
+        const categories = categoriesRes.data || [];
 
-        if (!votersData || votersData.length === 0) {
+        const allowedCategoryIds = categories
+            .filter((c: Category) => c.allowedElections?.includes(electionId))
+            .map((c: Category) => c.id);
+
+        if (allowedCategoryIds.length === 0) {
             return {
                 success: true,
                 data: {
@@ -37,31 +40,34 @@ export async function getRecapitulationStats(electionId: string): Promise<{ succ
             };
         }
 
-        const voterList = votersData.map((v: { id: string; name: string; categoryId: string | null; gender: string | null; hasVoted: unknown }) => ({
-            id: v.id,
-            name: v.name,
-            category: v.categoryId || '',
-            gender: v.gender as 'Laki-laki' | 'Perempuan' | undefined,
-            hasVoted: (v.hasVoted as Record<string, boolean>) || {},
-        })) as Voter[];
+        // Fetch ONLY gender and hasVoted for voters in allowed categories
+        // This prevents pulling heavy fields (like plaintext passwords) and all voters into memory
+        const votersData = await prisma.voter.findMany({
+            where: { categoryId: { in: allowedCategoryIds } },
+            select: { gender: true, hasVoted: true }
+        });
 
-        const categories = categoriesRes.data || [];
+        let dpt_male = 0;
+        let dpt_female = 0;
+        let voted_male = 0;
+        let voted_female = 0;
 
-        // Filter voters allowed for this election
-        const allowedCategoryIds = new Set(
-            categories.filter((c: Category) => c.allowedElections?.includes(electionId)).map((c: Category) => c.id)
-        );
-        const votersForThisElection = voterList.filter(v => allowedCategoryIds.has(v.category));
+        for (const v of votersData) {
+            const isMale = v.gender === 'Laki-laki';
+            const isFemale = v.gender === 'Perempuan';
+            
+            if (isMale) dpt_male++;
+            if (isFemale) dpt_female++;
 
-        // Calculate Stats
-        const dpt_male = votersForThisElection.filter(v => v.gender === 'Laki-laki').length;
-        const dpt_female = votersForThisElection.filter(v => v.gender === 'Perempuan').length;
-        const dpt_total = votersForThisElection.length;
+            const hasVotedMap = (v.hasVoted as Record<string, boolean>) || {};
+            if (hasVotedMap[electionId] === true) {
+                if (isMale) voted_male++;
+                if (isFemale) voted_female++;
+            }
+        }
 
-        const votersWhoVoted = votersForThisElection.filter(v => v.hasVoted?.[electionId] === true);
-        const voted_male = votersWhoVoted.filter(v => v.gender === 'Laki-laki').length;
-        const voted_female = votersWhoVoted.filter(v => v.gender === 'Perempuan').length;
-        const voted_total = votersWhoVoted.length;
+        const dpt_total = votersData.length;
+        const voted_total = voted_male + voted_female;
 
         const notVoted_male = dpt_male - voted_male;
         const notVoted_female = dpt_female - voted_female;
