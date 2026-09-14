@@ -1,11 +1,29 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
+
+const resetActionSchema = z.object({
+  action: z.enum([
+    'reset_votes_and_status',
+    'delete_all_voters',
+    'reset_all_elections',
+  ]),
+});
 
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('settings');
-    const { action } = await request.json();
+    const result = resetActionSchema.safeParse(await request.json());
+
+    if (!result.success) {
+      return NextResponse.json(
+        { message: 'Data tidak valid.', errors: result.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { action } = result.data;
 
     switch (action) {
       case 'reset_votes_and_status':

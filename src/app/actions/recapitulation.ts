@@ -5,6 +5,9 @@ import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
 import { getCategories } from './categories';
 import type { Category } from '@/lib/types';
+import { z } from 'zod';
+
+const electionIdSchema = z.string().trim().min(1);
 
 export interface RecapitulationStats {
     dpt: { total: number; male: number; female: number };
@@ -21,12 +24,18 @@ export async function getRecapitulationStats(electionId: string): Promise<{ succ
             await verifyAdminSession('voters');
         }
 
+        const electionIdResult = electionIdSchema.safeParse(electionId);
+        if (!electionIdResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validElectionId = electionIdResult.data;
+
         // Fetch categories first to determine allowed categories for this election
         const categoriesRes = await getCategories();
         const categories = categoriesRes.data || [];
 
         const allowedCategoryIds = categories
-            .filter((c: Category) => c.allowedElections?.includes(electionId))
+            .filter((c: Category) => c.allowedElections?.includes(validElectionId))
             .map((c: Category) => c.id);
 
         if (allowedCategoryIds.length === 0) {
@@ -55,12 +64,12 @@ export async function getRecapitulationStats(electionId: string): Promise<{ succ
         for (const v of votersData) {
             const isMale = v.gender === 'Laki-laki';
             const isFemale = v.gender === 'Perempuan';
-            
+
             if (isMale) dpt_male++;
             if (isFemale) dpt_female++;
 
             const hasVotedMap = (v.hasVoted as Record<string, boolean>) || {};
-            if (hasVotedMap[electionId] === true) {
+            if (hasVotedMap[validElectionId] === true) {
                 if (isMale) voted_male++;
                 if (isFemale) voted_female++;
             }

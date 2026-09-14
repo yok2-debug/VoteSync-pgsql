@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
 import {
     createCommittee,
@@ -8,6 +9,27 @@ import {
     updateCommitteeMember,
     deleteMemberFromCommittee,
 } from '@/app/actions/committees';
+
+const committeeMemberInputSchema = z.object({
+    name: z.string().trim().min(1),
+    role: z.enum(['Ketua', 'Anggota']),
+});
+
+const committeeMemberUpdateSchema = committeeMemberInputSchema.partial();
+
+const committeeSchema = z.object({
+    name: z.string().trim().min(1),
+    electionIds: z.array(z.string().min(1)),
+    members: z.array(
+        z.object({
+            id: z.string().min(1),
+            name: z.string().trim().min(1),
+            role: z.enum(['Ketua', 'Anggota']),
+        })
+    ),
+});
+
+const committeeUpdateSchema = committeeSchema.partial();
 
 // Committee CRUD
 export async function POST(request: Request) {
@@ -19,10 +41,24 @@ export async function POST(request: Request) {
 
         // Member operations
         if (action === 'addMember') {
-            const { committeeId, member } = data;
-            if (!committeeId || !member) {
-                return NextResponse.json({ message: 'Data tidak lengkap.' }, { status: 400 });
+            const committeeIdResult = z.string().min(1).safeParse(data.committeeId);
+            const memberResult = committeeMemberInputSchema.safeParse(data.member);
+
+            if (!committeeIdResult.success || !memberResult.success) {
+                return NextResponse.json(
+                    {
+                        message: 'Data tidak valid.',
+                        errors: {
+                            committeeId: committeeIdResult.success ? undefined : committeeIdResult.error.flatten(),
+                            member: memberResult.success ? undefined : memberResult.error.flatten(),
+                        },
+                    },
+                    { status: 400 }
+                );
             }
+
+            const committeeId = committeeIdResult.data;
+            const member = memberResult.data;
             const result = await addMemberToCommittee(committeeId, member);
             if (!result.success) {
                 return NextResponse.json({ message: result.message }, { status: 400 });
@@ -31,7 +67,15 @@ export async function POST(request: Request) {
         }
 
         // Create committee
-        const result = await createCommittee(data);
+        const parsed = committeeSchema.safeParse(data);
+        if (!parsed.success) {
+            return NextResponse.json(
+                { message: 'Data tidak valid.', errors: parsed.error.flatten() },
+                { status: 400 }
+            );
+        }
+
+        const result = await createCommittee(parsed.data);
         if (!result.success) {
             return NextResponse.json({ message: result.message }, { status: 400 });
         }
@@ -50,10 +94,29 @@ export async function PUT(request: Request) {
 
         // Member update
         if (action === 'updateMember') {
-            if (!committeeId || !memberId || !data) {
-                return NextResponse.json({ message: 'Data tidak lengkap.' }, { status: 400 });
+            const committeeIdResult = z.string().min(1).safeParse(committeeId);
+            const memberIdResult = z.string().min(1).safeParse(memberId);
+            const dataResult = committeeMemberUpdateSchema.safeParse(data);
+
+            if (!committeeIdResult.success || !memberIdResult.success || !dataResult.success) {
+                return NextResponse.json(
+                    {
+                        message: 'Data tidak valid.',
+                        errors: {
+                            committeeId: committeeIdResult.success ? undefined : committeeIdResult.error.flatten(),
+                            memberId: memberIdResult.success ? undefined : memberIdResult.error.flatten(),
+                            data: dataResult.success ? undefined : dataResult.error.flatten(),
+                        },
+                    },
+                    { status: 400 }
+                );
             }
-            const result = await updateCommitteeMember(committeeId, memberId, data);
+
+            const result = await updateCommitteeMember(
+                committeeIdResult.data,
+                memberIdResult.data,
+                dataResult.data
+            );
             if (!result.success) {
                 return NextResponse.json({ message: result.message }, { status: 400 });
             }
@@ -61,10 +124,23 @@ export async function PUT(request: Request) {
         }
 
         // Committee update
-        if (!committeeId || !data) {
-            return NextResponse.json({ message: 'Data tidak lengkap.' }, { status: 400 });
+        const committeeIdResult = z.string().min(1).safeParse(committeeId);
+        const dataResult = committeeUpdateSchema.safeParse(data);
+
+        if (!committeeIdResult.success || !dataResult.success) {
+            return NextResponse.json(
+                {
+                    message: 'Data tidak valid.',
+                    errors: {
+                        committeeId: committeeIdResult.success ? undefined : committeeIdResult.error.flatten(),
+                        data: dataResult.success ? undefined : dataResult.error.flatten(),
+                    },
+                },
+                { status: 400 }
+            );
         }
-        const result = await updateCommittee(committeeId, data);
+
+        const result = await updateCommittee(committeeIdResult.data, dataResult.data);
         if (!result.success) {
             return NextResponse.json({ message: result.message }, { status: 400 });
         }
@@ -83,10 +159,26 @@ export async function DELETE(request: Request) {
 
         // Member delete
         if (action === 'deleteMember') {
-            if (!committeeId || !memberId) {
-                return NextResponse.json({ message: 'Data tidak lengkap.' }, { status: 400 });
+            const committeeIdResult = z.string().min(1).safeParse(committeeId);
+            const memberIdResult = z.string().min(1).safeParse(memberId);
+
+            if (!committeeIdResult.success || !memberIdResult.success) {
+                return NextResponse.json(
+                    {
+                        message: 'Data tidak valid.',
+                        errors: {
+                            committeeId: committeeIdResult.success ? undefined : committeeIdResult.error.flatten(),
+                            memberId: memberIdResult.success ? undefined : memberIdResult.error.flatten(),
+                        },
+                    },
+                    { status: 400 }
+                );
             }
-            const result = await deleteMemberFromCommittee(committeeId, memberId);
+
+            const result = await deleteMemberFromCommittee(
+                committeeIdResult.data,
+                memberIdResult.data
+            );
             if (!result.success) {
                 return NextResponse.json({ message: result.message }, { status: 400 });
             }
@@ -94,10 +186,15 @@ export async function DELETE(request: Request) {
         }
 
         // Committee delete
-        if (!committeeId) {
-            return NextResponse.json({ message: 'Data tidak lengkap.' }, { status: 400 });
+        const committeeIdResult = z.string().min(1).safeParse(committeeId);
+        if (!committeeIdResult.success) {
+            return NextResponse.json(
+                { message: 'Data tidak valid.', errors: committeeIdResult.error.flatten() },
+                { status: 400 }
+            );
         }
-        const result = await deleteCommittee(committeeId);
+
+        const result = await deleteCommittee(committeeIdResult.data);
         if (!result.success) {
             return NextResponse.json({ message: result.message }, { status: 400 });
         }

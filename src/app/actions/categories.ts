@@ -4,6 +4,15 @@ import { prisma } from '@/lib/prisma';
 import type { Category } from '@/lib/types';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+
+const categoryIdSchema = z.string().min(1);
+
+const categoryCreateSchema = z.object({
+    name: z.string().trim().min(3),
+});
+
+const categoryUpdateSchema = categoryCreateSchema.partial();
 
 export async function getCategories(): Promise<{ success: boolean; data?: Category[]; message?: string }> {
     try {
@@ -38,18 +47,24 @@ export async function createCategory(
     try {
         await verifyAdminSession('categories');
 
+        const dataResult = categoryCreateSchema.safeParse(data);
+        if (!dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validData = dataResult.data;
+
         const categoryId = `category-${Date.now()}`;
-        const slug = data.name ? data.name.replace(/\s+/g, '').toLowerCase() : '';
+        const slug = validData.name.replace(/\s+/g, '').toLowerCase();
 
         await prisma.category.create({
             data: {
                 id: categoryId,
-                name: data.name,
+                name: validData.name,
                 slug: slug,
             }
         });
 
-        const newCategory: Category = { id: categoryId, name: data.name };
+        const newCategory: Category = { id: categoryId, name: validData.name };
 
         logger.info({ categoryId }, 'Category created');
         return { success: true, data: newCategory, message: 'Kategori berhasil dibuat.' };
@@ -70,8 +85,20 @@ export async function updateCategory(
     try {
         await verifyAdminSession('categories');
 
+        const idResult = categoryIdSchema.safeParse(id);
+        const dataResult = categoryUpdateSchema.safeParse(data);
+        if (!idResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validId = idResult.data;
+        const validData = dataResult.data;
+
+        if (Object.keys(validData).length === 0) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+
         const existing = await prisma.category.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!existing) {
@@ -79,17 +106,17 @@ export async function updateCategory(
         }
 
         const updateData: any = {};
-        if (data.name !== undefined) {
-            updateData.name = data.name;
-            updateData.slug = data.name.replace(/\s+/g, '').toLowerCase();
+        if (validData.name !== undefined) {
+            updateData.name = validData.name;
+            updateData.slug = validData.name.replace(/\s+/g, '').toLowerCase();
         }
 
         await prisma.category.update({
-            where: { id },
+            where: { id: validId },
             data: updateData
         });
 
-        logger.info({ categoryId: id }, 'Category updated');
+        logger.info({ categoryId: validId }, 'Category updated');
         return { success: true, message: 'Kategori berhasil diperbarui.' };
     } catch (error: any) {
         if (error.name === 'AuthError') {
@@ -105,8 +132,14 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
     try {
         await verifyAdminSession('categories');
 
+        const idResult = categoryIdSchema.safeParse(id);
+        if (!idResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validId = idResult.data;
+
         const existing = await prisma.category.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!existing) {
@@ -114,10 +147,10 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
         }
 
         await prisma.category.delete({
-            where: { id }
+            where: { id: validId }
         });
 
-        logger.info({ categoryId: id }, 'Category deleted');
+        logger.info({ categoryId: validId }, 'Category deleted');
         return { success: true, message: 'Kategori berhasil dihapus.' };
     } catch (error: any) {
         if (error.name === 'AuthError') {

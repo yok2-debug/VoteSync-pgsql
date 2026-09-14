@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { Election } from '@/lib/types';
 import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
 
 import { z } from 'zod';
@@ -10,7 +9,29 @@ const settingsSchema = z.object({
     show: z.boolean(),
     main: z.boolean(),
   })),
-  originalElections: z.array(z.custom<Election>()),
+}).superRefine((data, ctx) => {
+  const mainElections = Object.entries(data.selections)
+    .filter(([, settings]) => settings.main);
+
+  for (const [electionId, settings] of Object.entries(data.selections)) {
+    if (settings.main && !settings.show) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['selections', electionId, 'show'],
+        message: 'Election utama harus ditampilkan di Real Count.',
+      });
+    }
+  }
+
+  if (mainElections.length > 1) {
+    for (const [electionId] of mainElections) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['selections', electionId, 'main'],
+        message: 'Hanya satu election yang dapat menjadi Real Count utama.',
+      });
+    }
+  }
 });
 
 export async function POST(request: Request) {
@@ -23,9 +44,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Data tidak valid', errors: result.error.flatten() }, { status: 400 });
     }
 
-    const { selections, originalElections } = result.data;
+    const { selections } = result.data;
 
-    for (const election of originalElections) {
+    const electionIds = Object.keys(selections);
+
+    const elections = await prisma.election.findMany({
+      where: { id: { in: electionIds } },
+      select: {
+        id: true,
+        showInRealCount: true,
+        isMainInRealCount: true,
+      },
+    });
+
+    for (const election of elections) {
       const newSettings = selections[election.id];
       if (newSettings) {
         const updateData: any = {};

@@ -4,6 +4,20 @@ import { prisma } from '@/lib/prisma';
 import type { Election, Candidate } from '@/lib/types';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+
+const electionIdSchema = z.string().min(1);
+
+const createElectionSchema = z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    status: z.enum(['active', 'pending']).optional(),
+    useWitnesses: z.boolean().optional(),
+});
+
+const updateElectionSchema = createElectionSchema.partial();
 
 export async function getElections(): Promise<{ success: boolean; data?: Election[]; message?: string }> {
     try {
@@ -63,9 +77,12 @@ export async function getElections(): Promise<{ success: boolean; data?: Electio
 export async function getElection(id: string): Promise<{ success: boolean; data?: Election; message?: string }> {
     try {
         await verifyAdminSession();
+        const idResult = electionIdSchema.safeParse(id);
+        if (!idResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validId = idResult.data;
 
         const election = await prisma.election.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!election) {
@@ -74,7 +91,7 @@ export async function getElection(id: string): Promise<{ success: boolean; data?
 
         // Fetch candidates for this election
         const candidatesData = await prisma.candidate.findMany({
-            where: { electionId: id }
+            where: { electionId: validId }
         });
 
         const candidates: Record<string, Candidate> = {};
@@ -94,7 +111,7 @@ export async function getElection(id: string): Promise<{ success: boolean; data?
 
         // Fetch vote counts for this election
         const votesData = await prisma.vote.findMany({
-            where: { electionId: id },
+            where: { electionId: validId },
             select: { candidateId: true }
         });
 
@@ -138,28 +155,32 @@ export async function createElection(
     try {
         await verifyAdminSession('elections');
 
+        const dataResult = createElectionSchema.safeParse(data);
+        if (!dataResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validData = dataResult.data;
+
         const electionId = `election-${Date.now()}`;
 
         await prisma.election.create({
             data: {
                 id: electionId,
-                name: data.name,
-                description: data.description || '',
-                startDate: data.startDate || null,
-                endDate: data.endDate || null,
-                status: data.status || 'pending',
-                useWitnesses: data.useWitnesses || false,
+                name: validData.name,
+                description: validData.description || '',
+                startDate: validData.startDate || null,
+                endDate: validData.endDate || null,
+                status: validData.status || 'pending',
+                useWitnesses: validData.useWitnesses || false,
             }
         });
 
         const newElection: Election = {
             id: electionId,
-            name: data.name,
-            description: data.description,
-            startDate: data.startDate,
-            endDate: data.endDate,
-            status: data.status || 'pending',
-            useWitnesses: data.useWitnesses || false,
+            name: validData.name,
+            description: validData.description,
+            startDate: validData.startDate,
+            endDate: validData.endDate,
+            status: validData.status || 'pending',
+            useWitnesses: validData.useWitnesses || false,
             candidates: {},
         };
 
@@ -182,8 +203,16 @@ export async function updateElection(
     try {
         await verifyAdminSession('elections');
 
+        const idResult = electionIdSchema.safeParse(id);
+        const dataResult = updateElectionSchema.safeParse(data);
+        if (!idResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validId = idResult.data;
+        const validData = dataResult.data;
+
         const existing = await prisma.election.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!existing) {
@@ -191,15 +220,15 @@ export async function updateElection(
         }
 
         const updateData: any = {};
-        if (data.name !== undefined) updateData.name = data.name;
-        if (data.description !== undefined) updateData.description = data.description || '';
-        if (data.startDate !== undefined) updateData.startDate = data.startDate;
-        if (data.endDate !== undefined) updateData.endDate = data.endDate;
-        if (data.status !== undefined) updateData.status = data.status;
-        if (data.useWitnesses !== undefined) updateData.useWitnesses = data.useWitnesses;
+        if (validData.name !== undefined) updateData.name = validData.name;
+        if (validData.description !== undefined) updateData.description = validData.description || '';
+        if (validData.startDate !== undefined) updateData.startDate = validData.startDate;
+        if (validData.endDate !== undefined) updateData.endDate = validData.endDate;
+        if (validData.status !== undefined) updateData.status = validData.status;
+        if (validData.useWitnesses !== undefined) updateData.useWitnesses = validData.useWitnesses;
 
         await prisma.election.update({
-            where: { id },
+            where: { id: validId },
             data: updateData
         });
 
@@ -219,8 +248,12 @@ export async function deleteElection(id: string): Promise<{ success: boolean; me
     try {
         await verifyAdminSession('elections');
 
+        const idResult = electionIdSchema.safeParse(id);
+        if (!idResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validId = idResult.data;
+
         const existing = await prisma.election.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!existing) {
@@ -229,17 +262,17 @@ export async function deleteElection(id: string): Promise<{ success: boolean; me
 
         // Delete candidates first (cascade should handle this, but explicit is safer)
         await prisma.candidate.deleteMany({
-            where: { electionId: id }
+            where: { electionId: validId }
         });
 
         // Delete votes for this election
         await prisma.vote.deleteMany({
-            where: { electionId: id }
+            where: { electionId: validId }
         });
 
         // Delete the election
         await prisma.election.delete({
-            where: { id }
+            where: { id: validId }
         });
 
         // Clean up orphaned election references in categories
@@ -248,8 +281,8 @@ export async function deleteElection(id: string): Promise<{ success: boolean; me
         if (categories) {
             for (const category of categories) {
                 const allowedElections = category.allowedElections || [];
-                if (allowedElections.includes(id)) {
-                    const updatedElections = allowedElections.filter((eId: string) => eId !== id);
+                if (allowedElections.includes(validId)) {
+                    const updatedElections = allowedElections.filter((eId: string) => eId !== validId);
                     await prisma.category.update({
                         where: { id: category.id },
                         data: { allowedElections: updatedElections }

@@ -5,18 +5,33 @@ import { createAdminSession, createVoterSession } from '@/lib/session';
 import type { AdminSessionPayload, Permission, Role, AdminUser } from '@/lib/types';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+
+const adminLoginSchema = z.object({
+    username: z.string().trim().min(1),
+    password: z.string().min(1),
+});
+
+const voterLoginSchema = z.object({
+    voterId: z.string().min(1),
+    password: z.string().min(1),
+});
 
 function isBcryptHash(value: string): boolean {
     return /^\$2[aby]\$\d{2}\$/.test(value);
 }
 
 export async function loginAdmin(prevState: any, formData: FormData) {
-    const username = formData.get('username') as string;
-    const password = formData.get('password') as string;
+    const loginResult = adminLoginSchema.safeParse({
+        username: formData.get('username'),
+        password: formData.get('password'),
+    });
 
-    if (!username || !password) {
+    if (!loginResult.success) {
         return { success: false, message: 'Username dan password wajib diisi.' };
     }
+
+    const { username, password } = loginResult.data;
 
     try {
         // 1. Fetch User by username
@@ -85,12 +100,16 @@ export async function loginAdmin(prevState: any, formData: FormData) {
 }
 
 export async function loginVoter(prevState: any, formData: FormData) {
-    const voterId = formData.get('voterId') as string;
-    const password = formData.get('password') as string;
+    const loginResult = voterLoginSchema.safeParse({
+        voterId: formData.get('voterId'),
+        password: formData.get('password'),
+    });
 
-    if (!voterId || !password) {
+    if (!loginResult.success) {
         return { success: false, message: 'ID Pemilih dan password wajib diisi.' };
     }
+
+    const { voterId, password } = loginResult.data;
 
     try {
         const voterData = await prisma.voter.findUnique({

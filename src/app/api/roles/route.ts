@@ -4,11 +4,24 @@ import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
 
 import { z } from 'zod';
 
+const permissionSchema = z.enum([
+  'dashboard',
+  'elections',
+  'candidates',
+  'voters',
+  'categories',
+  'recapitulation',
+  'real_count',
+  'settings',
+  'users',
+  'committees',
+]);
+
 const roleSchema = z.object({
   isEditing: z.boolean().optional(),
-  id: z.string().optional(),
-  name: z.string().min(3),
-  permissions: z.array(z.string()).min(1),
+  id: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(3),
+  permissions: z.array(permissionSchema).min(1),
 });
 
 export async function POST(request: Request) {
@@ -62,7 +75,7 @@ export async function POST(request: Request) {
 }
 
 const deleteRoleSchema = z.object({
-  roleId: z.string().min(1),
+  roleId: z.string().trim().min(1),
 });
 
 export async function DELETE(request: Request) {

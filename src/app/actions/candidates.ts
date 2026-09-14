@@ -5,6 +5,29 @@ import type { Candidate } from '@/lib/types';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+const candidateIdSchema = z.string().min(1);
+
+const candidateCreateSchema = z.object({
+    name: z.string().trim().min(1),
+    viceCandidateId: z.string().min(1).optional(),
+    viceCandidateName: z.string().optional(),
+    photo: z.string().optional(),
+    vision: z.string().optional(),
+    mission: z.string().optional(),
+    voterId: z.string().min(1).optional(),
+});
+
+const candidateUpdateSchema = candidateCreateSchema.partial().extend({
+    orderNumber: z.number().int().min(1).optional(),
+    electionId: z.string().min(1).optional(),
+});
+
+const reorderCandidateSchema = z.object({
+    id: z.string().min(1),
+    orderNumber: z.number().int().min(1).optional(),
+});
 
 export async function createCandidate(
     electionId: string,
@@ -13,16 +36,17 @@ export async function createCandidate(
     try {
         await verifyAdminSession('candidates');
 
-        if (!electionId) {
-            return { success: false, message: 'ID Pemilihan wajib diisi.' };
+        const electionIdResult = candidateIdSchema.safeParse(electionId);
+        const dataResult = candidateCreateSchema.safeParse(data);
+        if (!electionIdResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
         }
-        if (!data.name) {
-            return { success: false, message: 'Nama kandidat wajib diisi.' };
-        }
+        const validElectionId = electionIdResult.data;
+        const validData = dataResult.data;
 
         // Check if election exists
         const election = await prisma.election.findUnique({
-            where: { id: electionId }
+            where: { id: validElectionId }
         });
 
         if (!election) {
@@ -30,11 +54,11 @@ export async function createCandidate(
         }
 
         // Use voterId if provided, otherwise generate unique ID
-        const candidateId = data.voterId || `candidate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const candidateId = validData.voterId || `candidate-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         // Check if candidate already exists
         const existingCandidate = await prisma.candidate.findFirst({
-            where: { id: candidateId, electionId }
+            where: { id: candidateId, electionId: validElectionId }
         });
 
         if (existingCandidate) {
@@ -43,7 +67,7 @@ export async function createCandidate(
 
         // Get max order number
         const maxOrderCandidate = await prisma.candidate.findFirst({
-            where: { electionId },
+            where: { electionId: validElectionId },
             orderBy: { orderNumber: 'desc' }
         });
 
@@ -53,27 +77,27 @@ export async function createCandidate(
         await prisma.candidate.create({
             data: {
                 id: candidateId,
-                electionId,
-                name: data.name,
-                viceCandidateName: data.viceCandidateName || null,
-                vision: data.vision || null,
-                mission: data.mission || null,
-                photoUrl: data.photo || null,
+                electionId: validElectionId,
+                name: validData.name,
+                viceCandidateName: validData.viceCandidateName || null,
+                vision: validData.vision || null,
+                mission: validData.mission || null,
+                photoUrl: validData.photo || null,
                 orderNumber: newOrder,
             }
         });
 
         const newCandidate: Candidate = {
             id: candidateId,
-            name: data.name,
-            viceCandidateName: data.viceCandidateName,
-            vision: data.vision,
-            mission: data.mission,
-            photo: data.photo,
+            name: validData.name,
+            viceCandidateName: validData.viceCandidateName,
+            vision: validData.vision,
+            mission: validData.mission,
+            photo: validData.photo,
             orderNumber: newOrder,
         };
 
-        logger.info({ electionId, candidateId }, 'Candidate created');
+        logger.info({ electionId: validElectionId, candidateId }, 'Candidate created');
         revalidatePath('/admin/candidates');
         return { success: true, message: 'Kandidat berhasil ditambahkan', data: newCandidate };
     } catch (error: any) {
@@ -94,13 +118,27 @@ export async function updateCandidate(
     try {
         await verifyAdminSession('candidates');
 
-        const targetElectionId = data.electionId || originalElectionId;
-        const isTransfer = targetElectionId !== originalElectionId;
+        const originalElectionIdResult = candidateIdSchema.safeParse(originalElectionId);
+        const candidateIdResult = candidateIdSchema.safeParse(candidateId);
+        const dataResult = candidateUpdateSchema.safeParse(data);
+
+        if (!originalElectionIdResult.success || !candidateIdResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+
+        const validOriginalElectionId = originalElectionIdResult.data;
+        const validCandidateId = candidateIdResult.data;
+        const validData = dataResult.data;
+        if (Object.keys(validData).length === 0) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const targetElectionId = validData.electionId || validOriginalElectionId;
+        const isTransfer = targetElectionId !== validOriginalElectionId;
 
         if (isTransfer) {
             // Get old candidate data
             const oldCandidate = await prisma.candidate.findFirst({
-                where: { id: candidateId, electionId: originalElectionId }
+                where: { id: validCandidateId, electionId: validOriginalElectionId }
             });
 
             if (!oldCandidate) {
@@ -116,30 +154,56 @@ export async function updateCandidate(
                 return { success: false, message: 'Pemilihan tujuan tidak ditemukan' };
             }
 
-            // Delete from old election
-            await prisma.candidate.deleteMany({
-                where: { id: candidateId, electionId: originalElectionId }
-            });
-
-            // Insert to new election
-            await prisma.candidate.create({
-                data: {
-                    id: candidateId,
-                    electionId: targetElectionId,
-                    name: data.name || oldCandidate.name,
-                    viceCandidateName: data.viceCandidateName !== undefined ? data.viceCandidateName : oldCandidate.viceCandidateName,
-                    vision: data.vision !== undefined ? data.vision : oldCandidate.vision,
-                    mission: data.mission !== undefined ? data.mission : oldCandidate.mission,
-                    photoUrl: data.photo !== undefined ? data.photo : oldCandidate.photoUrl,
-                    orderNumber: data.orderNumber !== undefined ? data.orderNumber : oldCandidate.orderNumber,
+            // Candidates with existing votes must not be transferred.
+            // Moving them would make Vote.electionId inconsistent with the candidate's new election.
+            const voteCount = await prisma.vote.count({
+                where: {
+                    candidateId: validCandidateId,
+                    electionId: validOriginalElectionId
                 }
             });
 
-            logger.info({ from: originalElectionId, to: targetElectionId, candidateId }, 'Candidate transferred');
+            if (voteCount > 0) {
+                return {
+                    success: false,
+                    message: 'Kandidat yang sudah memiliki suara tidak dapat dipindahkan ke pemilihan lain'
+                };
+            }
+
+            // Transfer by updating the election relation instead of deleting and recreating
+            // the candidate. This preserves the candidate ID and avoids cascading deletes.
+            await prisma.candidate.updateMany({
+                where: {
+                    id: validCandidateId,
+                    electionId: validOriginalElectionId
+                },
+                data: {
+                    electionId: targetElectionId,
+                    ...(validData.name !== undefined && { name: validData.name }),
+                    ...(validData.viceCandidateName !== undefined && {
+                        viceCandidateName: validData.viceCandidateName
+                    }),
+                    ...(validData.vision !== undefined && { vision: validData.vision }),
+                    ...(validData.mission !== undefined && { mission: validData.mission }),
+                    ...(validData.photo !== undefined && { photoUrl: validData.photo }),
+                    ...(validData.orderNumber !== undefined && {
+                        orderNumber: validData.orderNumber
+                    }),
+                }
+            });
+
+            logger.info(
+                {
+                    from: validOriginalElectionId,
+                    to: targetElectionId,
+                    candidateId: validCandidateId
+                },
+                'Candidate transferred'
+            );
         } else {
             // Normal update
             const existingCandidate = await prisma.candidate.findFirst({
-                where: { id: candidateId, electionId: originalElectionId }
+                where: { id: validCandidateId, electionId: validOriginalElectionId }
             });
 
             if (!existingCandidate) {
@@ -147,19 +211,19 @@ export async function updateCandidate(
             }
 
             const updateData: any = {};
-            if (data.name !== undefined) updateData.name = data.name;
-            if (data.viceCandidateName !== undefined) updateData.viceCandidateName = data.viceCandidateName;
-            if (data.vision !== undefined) updateData.vision = data.vision;
-            if (data.mission !== undefined) updateData.mission = data.mission;
-            if (data.photo !== undefined) updateData.photoUrl = data.photo;
-            if (data.orderNumber !== undefined) updateData.orderNumber = data.orderNumber;
+            if (validData.name !== undefined) updateData.name = validData.name;
+            if (validData.viceCandidateName !== undefined) updateData.viceCandidateName = validData.viceCandidateName;
+            if (validData.vision !== undefined) updateData.vision = validData.vision;
+            if (validData.mission !== undefined) updateData.mission = validData.mission;
+            if (validData.photo !== undefined) updateData.photoUrl = validData.photo;
+            if (validData.orderNumber !== undefined) updateData.orderNumber = validData.orderNumber;
 
             await prisma.candidate.updateMany({
-                where: { id: candidateId, electionId: originalElectionId },
+                where: { id: validCandidateId, electionId: validOriginalElectionId },
                 data: updateData
             });
 
-            logger.info({ electionId: originalElectionId, candidateId }, 'Candidate updated');
+            logger.info({ electionId: validOriginalElectionId, candidateId: validCandidateId }, 'Candidate updated');
         }
 
         revalidatePath('/admin/candidates');
@@ -182,19 +246,46 @@ export async function deleteCandidate(
     try {
         await verifyAdminSession('candidates');
 
+        const electionIdResult = candidateIdSchema.safeParse(electionId);
+        const candidateIdResult = candidateIdSchema.safeParse(candidateId);
+
+        if (!electionIdResult.success || !candidateIdResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+
+        const validElectionId = electionIdResult.data;
+        const validCandidateId = candidateIdResult.data;
+
         const existingCandidate = await prisma.candidate.findFirst({
-            where: { id: candidateId, electionId }
+            where: { id: validCandidateId, electionId: validElectionId }
         });
 
         if (!existingCandidate) {
             return { success: false, message: 'Kandidat tidak ditemukan' };
         }
 
-        await prisma.candidate.deleteMany({
-            where: { id: candidateId, electionId }
+        const voteCount = await prisma.vote.count({
+            where: {
+                candidateId: validCandidateId,
+                electionId: validElectionId
+            }
         });
 
-        logger.info({ electionId, candidateId }, 'Candidate deleted');
+        if (voteCount > 0) {
+            return {
+                success: false,
+                message: 'Kandidat yang sudah memiliki suara tidak dapat dihapus'
+            };
+        }
+
+        await prisma.candidate.deleteMany({
+            where: { id: validCandidateId, electionId: validElectionId }
+        });
+
+        logger.info(
+            { electionId: validElectionId, candidateId: validCandidateId },
+            'Candidate deleted'
+        );
         revalidatePath('/admin/candidates');
         return { success: true, message: 'Kandidat berhasil dihapus' };
 
@@ -215,22 +306,38 @@ export async function reorderCandidates(
     try {
         await verifyAdminSession('candidates');
 
-        if (!electionId || !Array.isArray(candidates)) {
-            return { success: false, message: 'Data tidak valid' };
+        const electionIdResult = candidateIdSchema.safeParse(electionId);
+        const candidatesResult = z.array(reorderCandidateSchema).min(1).safeParse(candidates);
+
+        if (!electionIdResult.success || !candidatesResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
         }
 
-        // Update each candidate's order
-        for (let i = 0; i < candidates.length; i++) {
-            const candidate = candidates[i];
-            if (candidate.id) {
-                await prisma.candidate.updateMany({
-                    where: { id: candidate.id, electionId },
-                    data: { orderNumber: i + 1 }
-                });
-            }
+        const validElectionId = electionIdResult.data;
+        const validCandidates = candidatesResult.data;
+
+        const candidateIds = validCandidates.map((candidate) => candidate.id);
+        if (new Set(candidateIds).size !== candidateIds.length) {
+            return { success: false, message: 'Data kandidat tidak valid.' };
         }
 
-        logger.info({ electionId, count: candidates.length }, 'Candidates reordered');
+        // Update each candidate's order based on its position in the submitted array.
+        for (let i = 0; i < validCandidates.length; i++) {
+            const candidate = validCandidates[i];
+
+            await prisma.candidate.updateMany({
+                where: {
+                    id: candidate.id,
+                    electionId: validElectionId
+                },
+                data: { orderNumber: i + 1 }
+            });
+        }
+
+        logger.info(
+            { electionId: validElectionId, count: validCandidates.length },
+            'Candidates reordered'
+        );
         revalidatePath('/admin/candidates');
         return { success: true, message: 'Urutan kandidat berhasil diperbarui' };
 

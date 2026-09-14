@@ -7,6 +7,50 @@ import { getVoterSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 import { hashPassword, generateReadablePassword } from '@/lib/password';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+const voterIdSchema = z.string().trim().min(1);
+
+const voterCreateSchema = z.object({
+    id: z.string().trim().min(1).optional(),
+    name: z.string().trim().optional(),
+    category: z.string().trim().optional(),
+    password: z.string().min(6).optional(),
+    nik: z.string().optional(),
+    birthPlace: z.string().optional(),
+    birthDate: z.string().optional(),
+    gender: z.enum(['Laki-laki', 'Perempuan']).optional(),
+    address: z.string().optional(),
+});
+
+const voterUpdateSchema = voterCreateSchema.partial();
+
+const voterIdsSchema = z.array(voterIdSchema).min(1);
+const bulkPasswordResetSchema = z.array(voterIdSchema).optional();
+
+const bulkCategoryUpdateSchema = z.object({
+    voterIds: voterIdsSchema,
+    newCategoryId: z.string().trim().min(1),
+});
+
+const voterPasswordResetSchema = z.object({
+    voterId: voterIdSchema,
+    newPassword: z.string().min(6),
+});
+
+const importVoterSchema = z.object({
+    id: z.string().trim().min(1),
+    name: z.string().optional(),
+    category: z.string().optional(),
+    password: z.string().optional(),
+    nik: z.string().optional(),
+    birthPlace: z.string().optional(),
+    birthDate: z.string().optional(),
+    gender: z.enum(['Laki-laki', 'Perempuan']).optional(),
+    address: z.string().optional(),
+});
+
+const importVotersSchema = z.array(importVoterSchema).min(1);
 
 export async function getVoters(): Promise<{ success: boolean; data?: Voter[]; message?: string }> {
     try {
@@ -66,8 +110,14 @@ export async function getVoter(voterId: string): Promise<{ success: boolean; dat
             throw err;
         }
 
+        const voterIdResult = voterIdSchema.safeParse(voterId);
+        if (!voterIdResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validVoterId = voterIdResult.data;
+
         const voter = await prisma.voter.findUnique({
-            where: { id: voterId }
+            where: { id: validVoterId }
         });
 
         if (!voter) {
@@ -133,8 +183,14 @@ export async function createVoter(
     try {
         await verifyAdminSession('voters');
 
+        const dataResult = voterCreateSchema.safeParse(data);
+        if (!dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validData = dataResult.data;
+
         // Generate custom voter ID if not provided
-        let voterId = data.id;
+        let voterId = validData.id;
 
         if (!voterId) {
             const generateTwoLetters = () => {
@@ -177,20 +233,20 @@ export async function createVoter(
             return { success: false, message: `ID Pemilih '${voterId}' sudah ada.` };
         }
 
-	const plainPassword = data.password || generateReadablePassword();
+	const plainPassword = validData.password || generateReadablePassword();
 	const hashedPassword = await hashPassword(plainPassword);
 
         await prisma.voter.create({
             data: {
                 id: voterId,
-                name: data.name || '',
-                categoryId: data.category || null,
+                name: validData.name || '',
+                categoryId: validData.category || null,
                 password: hashedPassword,
-                nik: data.nik || '',
-                birthPlace: data.birthPlace || '',
-                birthDate: data.birthDate || '',
-                gender: data.gender || null,
-                address: data.address || '',
+                nik: validData.nik || '',
+                birthPlace: validData.birthPlace || '',
+                birthDate: validData.birthDate || '',
+                gender: validData.gender || null,
+                address: validData.address || '',
                 hasVoted: {},
             }
         });
@@ -201,7 +257,7 @@ export async function createVoter(
             success: true,
             message: 'Pemilih berhasil dibuat',
             data: {
-                voterId,
+                voterId: validVoterId,
                 password: plainPassword,
             },
         };
@@ -223,15 +279,27 @@ export async function updateVoter(
     try {
         await verifyAdminSession('voters');
 
+        const voterIdResult = voterIdSchema.safeParse(voterId);
+        const dataResult = voterUpdateSchema.safeParse(data);
+        if (!voterIdResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validVoterId = voterIdResult.data;
+        const validData = dataResult.data;
+
+        if (Object.keys(validData).length === 0) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+
         const existingVoter = await prisma.voter.findUnique({
-            where: { id: voterId }
+            where: { id: validVoterId }
         });
 
         if (!existingVoter) {
             return { success: false, message: 'Pemilih tidak ditemukan' };
         }
 
-        const { password, ...restData } = data;
+        const { password, ...restData } = validData;
         const updateData: any = {
             name: restData.name,
             categoryId: restData.category,
@@ -254,17 +322,17 @@ export async function updateVoter(
         }
 
         await prisma.voter.update({
-            where: { id: voterId },
+            where: { id: validVoterId },
             data: updateData
         });
 
-        logger.info({ voterId }, 'Voter updated');
+        logger.info({ voterId: validVoterId }, 'Voter updated');
         revalidatePath('/admin/voters');
         return {
             success: true,
             message: 'Pemilih berhasil diperbarui',
             data: {
-                voterId,
+                voterId: validVoterId,
                 ...(password ? { password } : {}),
             },
         };
@@ -283,17 +351,23 @@ export async function deleteVoters(voterIds: string[]): Promise<{ success: boole
     try {
         const session = await verifyAdminSession('voters');
 
-        if (!voterIds || voterIds.length === 0) {
+        const voterIdsResult = voterIdsSchema.safeParse(voterIds);
+        if (!voterIdsResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validVoterIds = voterIdsResult.data;
+
+        if (validVoterIds.length === 0) {
             return { success: false, message: 'Tidak ada ID pemilih yang dipilih' };
         }
 
         await prisma.voter.deleteMany({
-            where: { id: { in: voterIds } }
+            where: { id: { in: validVoterIds } }
         });
 
-        logger.info({ admin: session.username, count: voterIds.length }, 'Voters deleted');
+        logger.info({ admin: session.username, count: validVoterIds.length }, 'Voters deleted');
         revalidatePath('/admin/voters');
-        return { success: true, message: `${voterIds.length} pemilih berhasil dihapus` };
+        return { success: true, message: `${validVoterIds.length} pemilih berhasil dihapus` };
 
     } catch (error: any) {
         if (error.name === 'AuthError') {
@@ -316,17 +390,23 @@ export async function bulkUpdateVoterCategory(
     try {
         await verifyAdminSession('voters');
 
-        if (!Array.isArray(voterIds) || voterIds.length === 0 || !newCategoryId) {
+        const categoryUpdateResult = bulkCategoryUpdateSchema.safeParse({
+            voterIds,
+            newCategoryId,
+        });
+        if (!categoryUpdateResult.success) {
             return { success: false, message: 'Data tidak valid.' };
         }
+        const validVoterIds = categoryUpdateResult.data.voterIds;
+        const validCategoryId = categoryUpdateResult.data.newCategoryId;
 
         await prisma.voter.updateMany({
-            where: { id: { in: voterIds } },
-            data: { categoryId: newCategoryId }
+            where: { id: { in: validVoterIds } },
+            data: { categoryId: validCategoryId }
         });
 
         revalidatePath('/admin/voters');
-        return { success: true, message: `${voterIds.length} pemilih berhasil diperbarui.` };
+        return { success: true, message: `${validVoterIds.length} pemilih berhasil diperbarui.` };
 
     } catch (error: any) {
         if (error.name === 'AuthError') {
@@ -349,15 +429,18 @@ export async function resetVoterPassword(
     try {
         await verifyAdminSession('voters');
 
-        if (!voterId || !newPassword) {
-            return { success: false, message: 'ID Pemilih dan kata sandi baru wajib diisi.' };
+        const passwordResetResult = voterPasswordResetSchema.safeParse({
+            voterId,
+            newPassword,
+        });
+        if (!passwordResetResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
         }
-        if (newPassword.length < 6) {
-            return { success: false, message: 'Kata sandi minimal harus 6 karakter.' };
-        }
+        const validVoterId = passwordResetResult.data.voterId;
+        const validNewPassword = passwordResetResult.data.newPassword;
 
         const voter = await prisma.voter.findUnique({
-            where: { id: voterId }
+            where: { id: validVoterId }
         });
 
         if (!voter) {
@@ -365,17 +448,17 @@ export async function resetVoterPassword(
         }
 
         await prisma.voter.update({
-            where: { id: voterId },
-	    data: { password: await hashPassword(newPassword) }
+            where: { id: validVoterId },
+	    data: { password: await hashPassword(validNewPassword) }
         });
 
-        logger.info({ voterId }, 'Voter password reset');
+        logger.info({ voterId: validVoterId }, 'Voter password reset');
         return {
             success: true,
             message: 'Kata sandi berhasil direset.',
             data: {
-                voterId,
-                password: newPassword,
+                voterId: validVoterId,
+                password: validNewPassword,
             },
         };
 
@@ -399,9 +482,15 @@ export async function resetVotersPasswords(
     try {
         await verifyAdminSession('voters');
 
+        const voterIdsResult = bulkPasswordResetSchema.safeParse(voterIds);
+        if (!voterIdsResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validVoterIds = voterIdsResult.data;
+
         const voters = await prisma.voter.findMany({
-            where: voterIds && voterIds.length > 0
-                ? { id: { in: voterIds } }
+            where: validVoterIds && validVoterIds.length > 0
+                ? { id: { in: validVoterIds } }
                 : undefined,
             select: { id: true },
         });
@@ -475,6 +564,12 @@ export async function importVoters(
             return { success: false, message: 'Tidak ada data pemilih untuk diimpor.' };
         }
 
+        const importResult = importVotersSchema.safeParse(voters);
+        if (!importResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validVoters = importResult.data;
+
         // Fetch categories for mapping
         const categories = await prisma.category.findMany();
 
@@ -491,7 +586,7 @@ export async function importVoters(
         const temporaryPasswords: { voterId: string; password: string }[] = [];
         const errors: string[] = [];
 
-        for (const voterData of voters) {
+        for (const voterData of validVoters) {
             const id = voterData.id;
             if (!id) {
                 errors.push(`Data baris tanpa ID dilewati: ${voterData.name}`);

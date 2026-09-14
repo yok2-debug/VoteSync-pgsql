@@ -4,11 +4,33 @@ import { prisma } from '@/lib/prisma';
 import type { Committee, CommitteeMember } from '@/lib/types';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+
+const committeeIdSchema = z.string().min(1);
+
+const committeeMemberSchema = z.object({
+    name: z.string().trim().min(1),
+    role: z.enum(['Ketua', 'Anggota']),
+});
+
+const committeeMemberUpdateSchema = committeeMemberSchema.partial();
+
+const committeeMemberWithIdSchema = committeeMemberSchema.extend({
+    id: z.string().min(1),
+});
+
+const committeeSchema = z.object({
+    name: z.string().trim().min(1),
+    electionIds: z.array(z.string().min(1)),
+    members: z.array(committeeMemberWithIdSchema),
+});
+
+const committeeUpdateSchema = committeeSchema.partial();
 
 // Helper to safely parse members from JSON
 function parseMembers(members: unknown): CommitteeMember[] {
-    if (!members || !Array.isArray(members)) return [];
-    return members as CommitteeMember[];
+    const result = z.array(committeeMemberWithIdSchema).safeParse(members);
+    return result.success ? result.data : [];
 }
 
 // Committee CRUD
@@ -42,8 +64,12 @@ export async function getCommittee(id: string): Promise<{ success: boolean; data
     try {
         await verifyAdminSession('committees');
 
+        const idResult = committeeIdSchema.safeParse(id);
+        if (!idResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validId = idResult.data;
+
         const committee = await prisma.committee.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!committee) {
@@ -72,14 +98,18 @@ export async function createCommittee(
     try {
         await verifyAdminSession('committees');
 
+        const dataResult = committeeSchema.safeParse(data);
+        if (!dataResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validData = dataResult.data;
+
         const committeeId = `committee-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         const created = await prisma.committee.create({
             data: {
                 id: committeeId,
-                name: data.name,
-                electionIds: data.electionIds || [],
-                members: (data.members || []) as unknown as any,
+                name: validData.name,
+                electionIds: validData.electionIds,
+                members: validData.members as unknown as any,
             }
         });
 
@@ -107,8 +137,16 @@ export async function updateCommittee(
     try {
         await verifyAdminSession('committees');
 
+        const idResult = committeeIdSchema.safeParse(id);
+        const dataResult = committeeUpdateSchema.safeParse(data);
+        if (!idResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validId = idResult.data;
+        const validData = dataResult.data;
+
         const existing = await prisma.committee.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!existing) {
@@ -116,16 +154,16 @@ export async function updateCommittee(
         }
 
         const updateData: any = {};
-        if (data.name !== undefined) updateData.name = data.name;
-        if (data.electionIds !== undefined) updateData.electionIds = data.electionIds;
-        if (data.members !== undefined) updateData.members = data.members as unknown as any;
+        if (validData.name !== undefined) updateData.name = validData.name;
+        if (validData.electionIds !== undefined) updateData.electionIds = validData.electionIds;
+        if (validData.members !== undefined) updateData.members = validData.members as unknown as any;
 
         await prisma.committee.update({
-            where: { id },
+            where: { id: validId },
             data: updateData
         });
 
-        logger.info({ committeeId: id }, 'Committee updated');
+        logger.info({ committeeId: validId }, 'Committee updated');
         return { success: true, message: 'Kategori panitia berhasil diperbarui.' };
     } catch (error) {
         logger.error({ err: error }, 'Error updating committee');
@@ -137,8 +175,12 @@ export async function deleteCommittee(id: string): Promise<{ success: boolean; m
     try {
         await verifyAdminSession('committees');
 
+        const idResult = committeeIdSchema.safeParse(id);
+        if (!idResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validId = idResult.data;
+
         const existing = await prisma.committee.findUnique({
-            where: { id }
+            where: { id: validId }
         });
 
         if (!existing) {
@@ -146,10 +188,10 @@ export async function deleteCommittee(id: string): Promise<{ success: boolean; m
         }
 
         await prisma.committee.delete({
-            where: { id }
+            where: { id: validId }
         });
 
-        logger.info({ committeeId: id }, 'Committee deleted');
+        logger.info({ committeeId: validId }, 'Committee deleted');
         return { success: true, message: 'Kategori panitia berhasil dihapus.' };
     } catch (error) {
         logger.error({ err: error }, 'Error deleting committee');
@@ -165,8 +207,16 @@ export async function addMemberToCommittee(
     try {
         await verifyAdminSession('committees');
 
+        const committeeIdResult = committeeIdSchema.safeParse(committeeId);
+        const memberResult = committeeMemberSchema.safeParse(member);
+        if (!committeeIdResult.success || !memberResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validCommitteeId = committeeIdResult.data;
+        const validMember = memberResult.data;
+
         const committee = await prisma.committee.findUnique({
-            where: { id: committeeId }
+            where: { id: validCommitteeId }
         });
 
         if (!committee) {
@@ -177,17 +227,17 @@ export async function addMemberToCommittee(
         const memberId = `member-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const newMember: CommitteeMember = {
             id: memberId,
-            ...member,
+            ...validMember,
         };
 
         members.push(newMember);
 
         await prisma.committee.update({
-            where: { id: committeeId },
+            where: { id: validCommitteeId },
             data: { members: members as unknown as any }
         });
 
-        logger.info({ committeeId, memberId }, 'Member added to committee');
+        logger.info({ committeeId: validCommitteeId, memberId }, 'Member added to committee');
         return { success: true, data: newMember, message: 'Anggota panitia berhasil ditambahkan.' };
     } catch (error) {
         logger.error({ err: error }, 'Error adding member to committee');
@@ -203,8 +253,18 @@ export async function updateCommitteeMember(
     try {
         await verifyAdminSession('committees');
 
+        const committeeIdResult = committeeIdSchema.safeParse(committeeId);
+        const memberIdResult = committeeIdSchema.safeParse(memberId);
+        const dataResult = committeeMemberUpdateSchema.safeParse(data);
+        if (!committeeIdResult.success || !memberIdResult.success || !dataResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validCommitteeId = committeeIdResult.data;
+        const validMemberId = memberIdResult.data;
+        const validData = dataResult.data;
+
         const committee = await prisma.committee.findUnique({
-            where: { id: committeeId }
+            where: { id: validCommitteeId }
         });
 
         if (!committee) {
@@ -212,7 +272,7 @@ export async function updateCommitteeMember(
         }
 
         const members = parseMembers(committee.members);
-        const memberIndex = members.findIndex((m) => m.id === memberId);
+        const memberIndex = members.findIndex((m) => m.id === validMemberId);
 
         if (memberIndex === -1) {
             return { success: false, message: 'Anggota panitia tidak ditemukan.' };
@@ -220,15 +280,15 @@ export async function updateCommitteeMember(
 
         members[memberIndex] = {
             ...members[memberIndex],
-            ...data,
+            ...validData,
         };
 
         await prisma.committee.update({
-            where: { id: committeeId },
+            where: { id: validCommitteeId },
             data: { members: members as unknown as any }
         });
 
-        logger.info({ committeeId, memberId }, 'Committee member updated');
+        logger.info({ committeeId: validCommitteeId, memberId: validMemberId }, 'Committee member updated');
         return { success: true, message: 'Anggota panitia berhasil diperbarui.' };
     } catch (error) {
         logger.error({ err: error }, 'Error updating committee member');
@@ -243,8 +303,16 @@ export async function deleteMemberFromCommittee(
     try {
         await verifyAdminSession('committees');
 
+        const committeeIdResult = committeeIdSchema.safeParse(committeeId);
+        const memberIdResult = committeeIdSchema.safeParse(memberId);
+        if (!committeeIdResult.success || !memberIdResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
+        const validCommitteeId = committeeIdResult.data;
+        const validMemberId = memberIdResult.data;
+
         const committee = await prisma.committee.findUnique({
-            where: { id: committeeId }
+            where: { id: validCommitteeId }
         });
 
         if (!committee) {
@@ -252,18 +320,18 @@ export async function deleteMemberFromCommittee(
         }
 
         const members = parseMembers(committee.members);
-        const updatedMembers = members.filter((m) => m.id !== memberId);
+        const updatedMembers = members.filter((m) => m.id !== validMemberId);
 
         if (updatedMembers.length === members.length) {
             return { success: false, message: 'Anggota panitia tidak ditemukan.' };
         }
 
         await prisma.committee.update({
-            where: { id: committeeId },
+            where: { id: validCommitteeId },
             data: { members: updatedMembers as unknown as any }
         });
 
-        logger.info({ committeeId, memberId }, 'Member deleted from committee');
+        logger.info({ committeeId: validCommitteeId, memberId: validMemberId }, 'Member deleted from committee');
         return { success: true, message: 'Anggota panitia berhasil dihapus.' };
     } catch (error) {
         logger.error({ err: error }, 'Error deleting member from committee');
@@ -283,6 +351,10 @@ export async function getCommitteesForElection(
             await verifyAdminSession('recapitulation');
         }
 
+        const electionIdResult = committeeIdSchema.safeParse(electionId);
+        if (!electionIdResult.success) return { success: false, message: 'Data tidak valid.' };
+        const validElectionId = electionIdResult.data;
+
         const committeesData = await prisma.committee.findMany();
 
         if (!committeesData || committeesData.length === 0) {
@@ -290,7 +362,7 @@ export async function getCommitteesForElection(
         }
 
         const linkedCommittees = committeesData
-            .filter((c: { id: string; name: string; electionIds: string[]; members: unknown; createdAt: Date; updatedAt: Date }) => c.electionIds && c.electionIds.includes(electionId))
+            .filter((c: { id: string; name: string; electionIds: string[]; members: unknown; createdAt: Date; updatedAt: Date }) => c.electionIds && c.electionIds.includes(validElectionId))
             .map((c: { id: string; name: string; electionIds: string[]; members: unknown; createdAt: Date; updatedAt: Date }) => ({
                 id: c.id,
                 name: c.name,

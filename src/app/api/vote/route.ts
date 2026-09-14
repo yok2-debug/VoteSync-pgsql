@@ -3,14 +3,27 @@ import { prisma } from '@/lib/prisma';
 import { getVoterSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 import crypto from 'crypto';
+import { z } from 'zod';
+
+const voteSchema = z.object({
+  electionId: z.string().min(1),
+  candidateId: z.string().min(1),
+  voterId: z.string().min(1),
+});
 
 export async function POST(request: Request) {
   try {
-    const { electionId, candidateId, voterId } = await request.json();
+    const json = await request.json();
+    const result = voteSchema.safeParse(json);
 
-    if (!electionId || !candidateId || !voterId) {
-      return NextResponse.json({ message: 'Data tidak lengkap.' }, { status: 400 });
+    if (!result.success) {
+      return NextResponse.json(
+        { message: 'Data tidak valid.', errors: result.error.flatten() },
+        { status: 400 }
+      );
     }
+
+    const { electionId, candidateId, voterId } = result.data;
 
     // VERIFIKASI SESI (Fix Vote Spoofing)
     const session = await getVoterSession();

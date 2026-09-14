@@ -64,7 +64,7 @@ export function RealCountSettings({ elections, onSuccess }: RealCountSettingsPro
             const response = await fetch('/api/settings/real-count', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ selections, originalElections: elections }),
+                body: JSON.stringify({ selections }),
             });
 
             if (!response.ok) {

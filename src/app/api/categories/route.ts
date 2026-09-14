@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
+
+const categorySchema = z.object({
+  isEditing: z.boolean().optional(),
+  id: z.string().min(1).optional(),
+  name: z.string().trim().min(1),
+  allowedElections: z.array(z.string().min(1)),
+});
+
+const deleteCategorySchema = z.object({
+  categoryId: z.string().min(1),
+});
 
 export async function GET() {
   try {
@@ -25,8 +37,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('categories');
-    const data = await request.json();
-    const { isEditing, id, name, allowedElections } = data;
+    const result = categorySchema.safeParse(await request.json());
+
+    if (!result.success) {
+      return NextResponse.json(
+        { message: 'Data tidak valid.', errors: result.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const { isEditing, id, name, allowedElections } = result.data;
 
     let categoryId = id;
 
@@ -67,11 +87,16 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     await verifyAdminSession('categories');
-    const { categoryId } = await request.json();
+    const result = deleteCategorySchema.safeParse(await request.json());
 
-    if (!categoryId) {
-      return NextResponse.json({ message: 'ID Kategori wajib diisi' }, { status: 400 });
+    if (!result.success) {
+      return NextResponse.json(
+        { message: 'Data tidak valid.', errors: result.error.flatten() },
+        { status: 400 }
+      );
     }
+
+    const { categoryId } = result.data;
 
     // Check if category is in use by voters
     const voters = await prisma.voter.findMany({

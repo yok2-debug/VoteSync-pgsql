@@ -3,19 +3,26 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
 import { revokeAdminSessions } from '@/lib/session';
 import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
+import { z } from 'zod';
 
+const resetPasswordSchema = z.object({
+  userId: z.string().min(1),
+  newPassword: z.string().min(6),
+});
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('users');
-    const { userId, newPassword } = await request.json();
+    const json = await request.json();
+    const result = resetPasswordSchema.safeParse(json);
 
-    if (!userId || !newPassword) {
-      return NextResponse.json({ message: 'ID Pengguna dan kata sandi baru wajib diisi.' }, { status: 400 });
+    if (!result.success) {
+      return NextResponse.json(
+        { message: 'Data tidak valid.', errors: result.error.flatten() },
+        { status: 400 }
+      );
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json({ message: 'Kata sandi minimal harus 6 karakter.' }, { status: 400 });
-    }
+    const { userId, newPassword } = result.data;
 
     const user = await prisma.appUser.findUnique({
       where: { id: userId },
