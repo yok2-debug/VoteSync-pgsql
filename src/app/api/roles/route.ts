@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../lib/api-helpers';
 
 import { z } from 'zod';
 
@@ -27,7 +27,7 @@ const roleSchema = z.object({
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('users');
-    const json = await request.json();
+    const json = await parseJsonBody(request);
 
     // Validate request body with Zod
     const result = roleSchema.safeParse(json);
@@ -81,7 +81,7 @@ const deleteRoleSchema = z.object({
 export async function DELETE(request: Request) {
   try {
     await verifyAdminSession('users');
-    const json = await request.json();
+    const json = await parseJsonBody(request);
 
     const result = deleteRoleSchema.safeParse(json);
     if (!result.success) {

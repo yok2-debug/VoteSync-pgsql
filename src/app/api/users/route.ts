@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
 import { revokeAdminSessions } from '@/lib/session';
-import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../lib/api-helpers';
 
 import { z } from 'zod';
 
@@ -31,7 +31,7 @@ const userSchema = z.object({
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('users');
-    const json = await request.json();
+    const json = await parseJsonBody(request);
 
     // Validate request body with Zod
     const result = userSchema.safeParse(json);
@@ -110,7 +110,7 @@ const deleteUserSchema = z.object({
 export async function DELETE(request: Request) {
   try {
     await verifyAdminSession('users');
-    const json = await request.json();
+    const json = await parseJsonBody(request);
 
     const result = deleteUserSchema.safeParse(json);
     if (!result.success) {

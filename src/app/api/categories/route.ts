@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../lib/api-helpers';
 
 const categorySchema = z.object({
   isEditing: z.boolean().optional(),
@@ -37,7 +37,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('categories');
-    const result = categorySchema.safeParse(await request.json());
+    const result = categorySchema.safeParse(await parseJsonBody(request));
 
     if (!result.success) {
       return NextResponse.json(
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     await verifyAdminSession('categories');
-    const result = deleteCategorySchema.safeParse(await request.json());
+    const result = deleteCategorySchema.safeParse(await parseJsonBody(request));
 
     if (!result.success) {
       return NextResponse.json(

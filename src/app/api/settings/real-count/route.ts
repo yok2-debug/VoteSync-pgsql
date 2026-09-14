@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../../lib/api-helpers';
 
 import { z } from 'zod';
 
@@ -37,7 +37,7 @@ const settingsSchema = z.object({
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('real_count');
-    const json = await request.json();
+    const json = await parseJsonBody(request);
 
     const result = settingsSchema.safeParse(json);
     if (!result.success) {
@@ -57,26 +57,31 @@ export async function POST(request: Request) {
       },
     });
 
-    for (const election of elections) {
-      const newSettings = selections[election.id];
-      if (newSettings) {
-        const updateData: any = {};
+    await prisma.$transaction(async (tx) => {
+      for (const election of elections) {
+        const newSettings = selections[election.id];
+        if (newSettings) {
+          const updateData: {
+            showInRealCount?: boolean;
+            isMainInRealCount?: boolean;
+          } = {};
 
-        if (newSettings.show !== (election.showInRealCount || false)) {
-          updateData.showInRealCount = newSettings.show;
-        }
-        if (newSettings.main !== (election.isMainInRealCount || false)) {
-          updateData.isMainInRealCount = newSettings.main;
-        }
+          if (newSettings.show !== (election.showInRealCount || false)) {
+            updateData.showInRealCount = newSettings.show;
+          }
+          if (newSettings.main !== (election.isMainInRealCount || false)) {
+            updateData.isMainInRealCount = newSettings.main;
+          }
 
-        if (Object.keys(updateData).length > 0) {
-          await prisma.election.update({
-            where: { id: election.id },
-            data: updateData
-          });
+          if (Object.keys(updateData).length > 0) {
+            await tx.election.update({
+              where: { id: election.id },
+              data: updateData
+            });
+          }
         }
       }
-    }
+    });
 
     return NextResponse.json({ message: 'Pengaturan Real Count berhasil disimpan' }, { status: 200 });
   } catch (error) {

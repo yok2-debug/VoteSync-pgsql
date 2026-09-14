@@ -4,6 +4,21 @@ import { getAdminSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
 
+export class InvalidJsonError extends Error {
+  constructor(message = 'Format JSON tidak valid.') {
+    super(message);
+    this.name = 'InvalidJsonError';
+  }
+}
+
+export async function parseJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    throw new InvalidJsonError();
+  }
+}
+
 export class AuthError extends Error {
   constructor(message = 'Akses ditolak. Anda tidak memiliki izin.') {
     super(message);
@@ -26,13 +41,22 @@ export async function verifyAdminSession(requiredPermission?: Permission): Promi
 }
 
 export function handleApiError(error: unknown): NextResponse {
+  if (error instanceof InvalidJsonError) {
+    return NextResponse.json(
+      { message: error.message },
+      { status: 400 }
+    );
+  }
+
   if (error instanceof AuthError) {
     logger.warn({ msg: error.message }, 'AuthError in API Route');
     return NextResponse.json({ message: error.message }, { status: 403 }); // 403 Forbidden
   }
 
-  const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan tidak diketahui';
   logger.error({ err: error }, 'Unhandled API Error');
 
-  return NextResponse.json({ message: 'Terjadi kesalahan pada server', error: errorMessage }, { status: 500 });
+  return NextResponse.json(
+    { message: 'Terjadi kesalahan pada server' },
+    { status: 500 }
+  );
 }

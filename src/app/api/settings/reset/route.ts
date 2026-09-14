@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../../lib/api-helpers';
 
 const resetActionSchema = z.object({
   action: z.enum([
@@ -14,7 +14,7 @@ const resetActionSchema = z.object({
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('settings');
-    const result = resetActionSchema.safeParse(await request.json());
+    const result = resetActionSchema.safeParse(await parseJsonBody(request));
 
     if (!result.success) {
       return NextResponse.json(

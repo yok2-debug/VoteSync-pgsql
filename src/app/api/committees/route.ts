@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../lib/api-helpers';
 import {
     createCommittee,
     updateCommittee,
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     try {
         await verifyAdminSession('committees');
 
-        const body = await request.json();
+        const body = await parseJsonBody(request);
         const { action, ...data } = body;
 
         // Member operations
@@ -89,7 +89,7 @@ export async function PUT(request: Request) {
     try {
         await verifyAdminSession('committees');
 
-        const body = await request.json();
+        const body = await parseJsonBody(request);
         const { action, committeeId, memberId, data } = body;
 
         // Member update
@@ -154,7 +154,7 @@ export async function DELETE(request: Request) {
     try {
         await verifyAdminSession('committees');
 
-        const body = await request.json();
+        const body = await parseJsonBody(request);
         const { action, committeeId, memberId } = body;
 
         // Member delete

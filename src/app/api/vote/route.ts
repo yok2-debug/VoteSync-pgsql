@@ -4,6 +4,8 @@ import { getVoterSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 import crypto from 'crypto';
 import { z } from 'zod';
+import { InvalidJsonError, parseJsonBody } from '../lib/api-helpers';
+import { Prisma } from '@prisma/client';
 
 const voteSchema = z.object({
   electionId: z.string().min(1),
@@ -13,7 +15,7 @@ const voteSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const json = await request.json();
+    const json = await parseJsonBody(request);
     const result = voteSchema.safeParse(json);
 
     if (!result.success) {
@@ -132,10 +134,16 @@ export async function POST(request: Request) {
           data: { hasVoted }
         })
       ]);
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle unique constraint violation from parallel requests
-      if (error.code === 'P2002') {
-        return NextResponse.json({ message: 'Anda sudah memberikan suara dalam pemilihan ini.' }, { status: 409 });
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return NextResponse.json(
+          { message: 'Anda sudah memberikan suara dalam pemilihan ini.' },
+          { status: 409 }
+        );
       }
       throw error; // Let the outer catch handle and log it
     }
@@ -145,8 +153,17 @@ export async function POST(request: Request) {
     }, { status: 200 });
 
   } catch (error) {
+    if (error instanceof InvalidJsonError) {
+      return NextResponse.json(
+        { message: error.message },
+        { status: 400 }
+      );
+    }
+
     logger.error({ err: error }, 'Vote error');
-    const errorMessage = error instanceof Error ? error.message : 'Terjadi kesalahan tidak diketahui';
-    return NextResponse.json({ message: 'Gagal mencatat suara', error: errorMessage }, { status: 500 });
+    return NextResponse.json(
+      { message: 'Gagal mencatat suara' },
+      { status: 500 }
+    );
   }
 }

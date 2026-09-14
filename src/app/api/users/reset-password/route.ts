@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
 import { revokeAdminSessions } from '@/lib/session';
-import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
+import { handleApiError, parseJsonBody, verifyAdminSession } from '../../lib/api-helpers';
 import { z } from 'zod';
 
 const resetPasswordSchema = z.object({
@@ -12,7 +12,7 @@ const resetPasswordSchema = z.object({
 export async function POST(request: Request) {
   try {
     await verifyAdminSession('users');
-    const json = await request.json();
+    const json = await parseJsonBody(request);
     const result = resetPasswordSchema.safeParse(json);
 
     if (!result.success) {
