@@ -80,6 +80,7 @@ export interface AdminSessionPayload {
   roleId: string;
   roleName: string;
   permissions: Permission[];
+  sessionVersion: number;
   expires?: number;
 }
 

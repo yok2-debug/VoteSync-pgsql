@@ -1,11 +1,12 @@
 'use server';
 
 import { cookies } from 'next/headers';
+import { prisma } from './prisma';
 import type { AdminSessionPayload, VoterSessionPayload } from './types';
 import { encrypt, decrypt } from './auth';
 
 const ADMIN_SESSION_COOKIE_NAME = 'votesync_admin_session';
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_DURATION = 2 * 60 * 60 * 1000; // 2 hours
 
 // Allow overriding secure cookie via env var (useful for HTTP in production-like environments)
 const isSecureCookie = process.env.COOKIE_SECURE === 'false'
@@ -32,15 +33,40 @@ export async function deleteAdminSessionCookie() {
   cookieStore.delete(ADMIN_SESSION_COOKIE_NAME);
 }
 
+export async function revokeAdminSessions(userId: string) {
+  await prisma.appUser.update({
+    where: { id: userId },
+    data: {
+      sessionVersion: {
+        increment: 1,
+      },
+    },
+  });
+}
+
 export async function logoutAdmin() {
   await deleteAdminSessionCookie();
 }
 
-export async function getAdminSession() {
+export async function getAdminSession(): Promise<AdminSessionPayload | null> {
   const cookieStore = await cookies();
-  const session = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
+  const sessionCookie = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
+
+  if (!sessionCookie) return null;
+
+  const session = await decrypt(sessionCookie);
   if (!session) return null;
-  return await decrypt(session);
+
+  const user = await prisma.appUser.findUnique({
+    where: { id: session.userId },
+    select: { sessionVersion: true },
+  });
+
+  if (!user || user.sessionVersion !== session.sessionVersion) {
+    return null;
+  }
+
+  return session;
 }
 
 const VOTER_SESSION_COOKIE_NAME = 'votesync_voter_session';
@@ -56,7 +82,7 @@ export async function createVoterSession(payload: Omit<VoterSessionPayload, 'exp
   // or better, update auth.ts to be generic. 
   // But updating auth.ts might break other things. 
   // Let's assume encrypt can handle it if we cast.
-  const session = await encrypt(payload as any);
+  const session = await encrypt(payload);
 
   const cookieStore = await cookies();
 

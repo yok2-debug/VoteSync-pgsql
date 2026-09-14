@@ -44,6 +44,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Waktu pemilihan sudah ditutup.' }, { status: 403 });
     }
 
+    // Validasi bahwa kandidat benar-benar milik election yang dipilih.
+    // Jangan percaya candidateId yang dikirim oleh client.
+    const candidate = await prisma.candidate.findUnique({
+      where: { id: candidateId },
+      select: { id: true, electionId: true },
+    });
+
+    if (!candidate || candidate.electionId !== electionId) {
+      return NextResponse.json(
+        { message: 'Kandidat tidak valid untuk pemilihan ini.' },
+        { status: 403 }
+      );
+    }
+
     // Validasi Kategori Pemilih
     // Sumber kebenaran ada di Category.allowedElections, bukan Election.allowedCategories
     if (!voterData.categoryId) {

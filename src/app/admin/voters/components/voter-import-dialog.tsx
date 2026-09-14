@@ -23,7 +23,7 @@ interface VoterImportDialogProps {
   data: any[];
   categories: Category[];
   existingVoters: Voter[];
-  onSuccess: () => Promise<void>;
+  onSuccess: (data?: { voterId: string; password: string }[]) => Promise<void>;
 }
 
 type ValidatedRow = {
@@ -158,7 +158,7 @@ export function VoterImportDialog({ open, onOpenChange, data, categories, existi
         title: 'Impor Berhasil',
         description: `${dataToImport.length} pemilih berhasil diimpor.`,
       });
-      await onSuccess();
+      await onSuccess(result.data);
       onOpenChange(false);
     } catch (error) {
       toast({

@@ -2,9 +2,13 @@
 
 import { prisma } from '@/lib/prisma';
 import { createAdminSession, createVoterSession } from '@/lib/session';
-import type { AdminSessionPayload, Permission, Role, AdminUser, Voter } from '@/lib/types';
-import { verifyPassword } from '@/lib/password';
+import type { AdminSessionPayload, Permission, Role, AdminUser } from '@/lib/types';
+import { hashPassword, verifyPassword } from '@/lib/password';
 import { logger } from '@/lib/logger';
+
+function isBcryptHash(value: string): boolean {
+    return /^\$2[aby]\$\d{2}\$/.test(value);
+}
 
 export async function loginAdmin(prevState: any, formData: FormData) {
     const username = formData.get('username') as string;
@@ -62,6 +66,7 @@ export async function loginAdmin(prevState: any, formData: FormData) {
             roleId: user.roleId,
             roleName: role.name,
             permissions: role.permissions as Permission[],
+            sessionVersion: userData.sessionVersion,
         };
 
         await createAdminSession(sessionPayload);
@@ -96,21 +101,33 @@ export async function loginVoter(prevState: any, formData: FormData) {
             return { success: false, message: 'ID Pemilih atau password tidak valid.' };
         }
 
-        const voter: Voter = {
-            id: voterData.id,
-            name: voterData.name,
-            category: voterData.categoryId || '',
-            password: voterData.password,
-            nik: voterData.nik || undefined,
-            birthPlace: voterData.birthPlace || undefined,
-            birthDate: voterData.birthDate || undefined,
-            gender: voterData.gender as 'Laki-laki' | 'Perempuan' | undefined,
-            address: voterData.address || undefined,
-            hasVoted: (voterData.hasVoted as Record<string, boolean>) || {},
-        };
+	const storedPassword = voterData.password || '';
 
-        // Verify plain text password
-        const isValid = password === voter.password;
+        let isValid = false;
+
+        if (isBcryptHash(storedPassword)) {
+            // Password baru: verifikasi menggunakan bcrypt.
+            isValid = await verifyPassword(password, storedPassword);
+        } else {
+            // Kompatibilitas dengan data lama yang masih plaintext.
+            isValid = password === storedPassword;
+
+            if (isValid) {
+                // Migrasi otomatis plaintext -> bcrypt setelah login berhasil.
+                const hashedPassword = await hashPassword(password);
+
+                await prisma.voter.update({
+                    where: { id: voterData.id },
+                    data: { password: hashedPassword },
+                });
+
+                logger.info(
+                    { voterId: voterData.id },
+                    'Migrated legacy voter password to bcrypt'
+                );
+            }
+        }
+
         if (!isValid) {
             return { success: false, message: 'ID Pemilih atau password tidak valid.' };
         }

@@ -13,13 +13,14 @@ export default function VotersPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [elections, setElections] = useState<Election[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [votersResult, categoriesResult, electionsResult] = await Promise.all([
-        getVoters({ includeSensitive: true }),
+	getVoters(),
         getCategories(),
         getElections()
       ]);
@@ -68,6 +69,8 @@ export default function VotersPage() {
         categories={categories}
         elections={elections}
         refreshVoters={fetchData}
+        temporaryPasswords={temporaryPasswords}
+        setTemporaryPasswords={setTemporaryPasswords}
       />
     </div>
   );

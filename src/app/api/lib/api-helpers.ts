@@ -1,21 +1,8 @@
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { AdminSessionPayload, Permission } from '@/lib/types';
-import { decrypt } from '@/lib/auth';
+import { getAdminSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
-const ADMIN_SESSION_COOKIE_NAME = 'votesync_admin_session';
-
-async function getSessionFromCookie(): Promise<AdminSessionPayload | null> {
-  const cookieStore = await cookies();
-  const sessionCookie = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
-
-  if (!sessionCookie) {
-    return null;
-  }
-
-  return await decrypt(sessionCookie);
-}
 
 export class AuthError extends Error {
   constructor(message = 'Akses ditolak. Anda tidak memiliki izin.') {
@@ -25,7 +12,7 @@ export class AuthError extends Error {
 }
 
 export async function verifyAdminSession(requiredPermission?: Permission): Promise<AdminSessionPayload> {
-  const session = await getSessionFromCookie();
+  const session = await getAdminSession();
 
   if (!session) {
     throw new AuthError('Sesi tidak valid atau telah kedaluwarsa.');

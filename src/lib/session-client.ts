@@ -38,7 +38,8 @@ export function getAdminSession(): AdminSessionPayload | null {
     const parsed = JSON.parse(session);
     // Validate all required fields for AdminSessionPayload
     if (!parsed.userId || !parsed.username || !parsed.permissions ||
-      !parsed.roleId || !parsed.roleName) {
+      !parsed.roleId || !parsed.roleName ||
+      typeof parsed.sessionVersion !== 'number') {
       logger.warn('Invalid admin session format detected, clearing session');
       deleteAdminSession();
       return null;
@@ -61,6 +62,4 @@ export async function setAdminSession(payload: AdminSessionPayload) {
 export async function deleteAdminSession() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(ADMIN_SESSION_KEY);
-  // Also remove the server-side cookie by telling browser to expire it
-  document.cookie = "votesync_admin_session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 }

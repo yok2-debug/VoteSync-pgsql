@@ -2,6 +2,7 @@ import { AdminSidebar } from '@/components/admin-sidebar';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { getAdminSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 
 export default async function AdminLayout({
   children,
@@ -10,9 +11,17 @@ export default async function AdminLayout({
 }) {
   const session = await getAdminSession();
 
-  // No valid session - redirect to login
-  // This is the primary authentication check after proxy.ts does basic cookie check
+  // No valid session - redirect to login.
+  // If the cookie still exists but the session was revoked, send it through
+  // the Route Handler so the HttpOnly cookie can be safely deleted.
   if (!session) {
+    const cookieStore = await cookies();
+    const hasSessionCookie = cookieStore.has('votesync_admin_session');
+
+    if (hasSessionCookie) {
+      redirect('/api/auth/session-expired');
+    }
+
     redirect('/admin-login');
   }
 

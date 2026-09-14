@@ -45,7 +45,7 @@ interface VoterFormDialogProps {
   onOpenChange: (open: boolean) => void;
   voter: Voter | null;
   categories: Category[];
-  onSuccess: () => Promise<void>;
+  onSuccess: (data?: { voterId: string; password?: string }) => Promise<void>;
 }
 
 export function VoterFormDialog({
@@ -113,7 +113,7 @@ export function VoterFormDialog({
         description: `"${data.name}" telah berhasil disimpan.`,
       });
 
-      await onSuccess();
+      await onSuccess(result.data);
       onOpenChange(false);
     } catch (error) {
       toast({

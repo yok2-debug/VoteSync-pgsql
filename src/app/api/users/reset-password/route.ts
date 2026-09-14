@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
+import { revokeAdminSessions } from '@/lib/session';
 import { handleApiError, verifyAdminSession } from '../../lib/api-helpers';
 
 export async function POST(request: Request) {
@@ -29,6 +30,8 @@ export async function POST(request: Request) {
       where: { id: userId },
       data: { password: await hashPassword(newPassword) }
     });
+
+    await revokeAdminSessions(userId);
 
     return NextResponse.json({ message: 'Kata sandi pengguna berhasil direset.' }, { status: 200 });
 

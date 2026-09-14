@@ -45,13 +45,22 @@ type VoterTableProps = {
   categories: Category[];
   elections: Election[];
   refreshVoters: () => Promise<void>;
+  temporaryPasswords: Record<string, string>;
+  setTemporaryPasswords: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 };
 
 type EnrichedVoter = Voter & { categoryName?: string };
 
 const ITEMS_PER_PAGE = 100;
 
-export function VoterTable({ voters, categories, elections, refreshVoters }: VoterTableProps) {
+export function VoterTable({
+  voters,
+  categories,
+  elections,
+  refreshVoters,
+  temporaryPasswords,
+  setTemporaryPasswords,
+}: VoterTableProps) {
   const [filter, setFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,14 +70,17 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
   const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showBulkUpdateDialog, setShowBulkUpdateDialog] = useState(false);
+  const [showBulkResetPasswordDialog, setShowBulkResetPasswordDialog] = useState(false);
   const [importedData, setImportedData] = useState<any[]>([]);
   const [selectedVoter, setSelectedVoter] = useState<Voter | null>(null);
+
   const [isDeleting, setIsDeleting] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
   const [isPrinting, setIsPrinting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isBulkResettingPassword, setIsBulkResettingPassword] = useState(false);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -231,6 +243,54 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
     setShowResetPasswordDialog(true);
   };
 
+  const handleBulkResetPassword = async () => {
+    setIsBulkResettingPassword(true);
+
+    try {
+      const { resetVotersPasswords } = await import('@/app/actions/voters');
+
+      const idsToReset =
+        numSelected > 0
+          ? selectedVoterIds
+          : enrichedVoters.map(voter => voter.id);
+
+      const result = await resetVotersPasswords(idsToReset);
+
+      if (!result.success) {
+        throw new Error(result.message || 'Gagal mereset password pemilih.');
+      }
+
+      await refreshVoters();
+
+      if (result.data && result.data.length > 0) {
+        setTemporaryPasswords(prev => ({
+          ...prev,
+          ...Object.fromEntries(
+            result.data!.map(item => [item.voterId, item.password])
+          ),
+        }));
+      }
+
+      toast({
+        title: 'Password berhasil direset',
+        description: `${result.data?.length || 0} pemilih mendapatkan password baru. Kartu sekarang dapat dicetak.`,
+      });
+
+      setShowBulkResetPasswordDialog(false);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Gagal mereset password',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Terjadi kesalahan tidak diketahui.',
+      });
+    } finally {
+      setIsBulkResettingPassword(false);
+    }
+  };
+
   const { printButtonLabel, idsForPrintLogic } = useMemo(() => {
     if (numSelected > 0) {
       return {
@@ -253,37 +313,86 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
 
   const handlePrint = () => {
     setIsPrinting(true);
-    const votersToPrint = enrichedVoters.filter(v => idsForPrintLogic.includes(v.id));
+
+    const votersToPrint = enrichedVoters.filter(v =>
+      idsForPrintLogic.includes(v.id)
+    );
 
     if (votersToPrint.length === 0) {
       toast({
         variant: 'destructive',
-        title: "Tidak ada pemilih untuk dicetak",
-        description: "Tidak ada pemilih yang cocok dengan kriteria cetak Anda.",
+        title: 'Tidak ada pemilih untuk dicetak',
+        description: 'Tidak ada pemilih yang cocok dengan kriteria cetak Anda.',
       });
       setIsPrinting(false);
       return;
+    }
+
+    const votersWithPassword = votersToPrint.filter(
+      voter => !!temporaryPasswords[voter.id]
+    );
+
+    const votersWithoutPassword = votersToPrint.filter(
+      voter => !temporaryPasswords[voter.id]
+    );
+
+    if (votersWithPassword.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Password tidak tersedia',
+        description:
+          'Password pemilih tidak tersedia untuk dicetak. Silakan buat atau reset password terlebih dahulu.',
+      });
+      setIsPrinting(false);
+      return;
+    }
+
+    if (votersWithoutPassword.length > 0) {
+      toast({
+        title: 'Sebagian kartu tidak dicetak',
+        description:
+          `${votersWithoutPassword.length} pemilih tidak memiliki password sementara. ` +
+          'Reset password terlebih dahulu jika kartu mereka ingin dicetak.',
+      });
     }
 
     const printWindow = window.open('', '_blank');
+
     if (!printWindow) {
       toast({
         variant: 'destructive',
-        title: "Gagal membuka jendela cetak",
-        description: "Silakan izinkan pop-up untuk situs ini dan coba lagi.",
+        title: 'Gagal membuka jendela cetak',
+        description:
+          'Silakan izinkan pop-up untuk situs ini dan coba lagi.',
       });
       setIsPrinting(false);
       return;
     }
 
-    const cardsHtml = votersToPrint.map(voter => {
-      const voterCategory = categories.find(c => c.id === voter.category);
-      const electionNames = voterCategory?.allowedElections
-        ?.map(eId => elections.find(e => e.id === eId)?.name)
-        .filter((name): name is string => !!name) || [];
+    const cardsHtml = votersWithPassword
+      .map(voter => {
+        const temporaryPassword = temporaryPasswords[voter.id];
 
-      return renderToStaticMarkup(<VoterCard voter={voter} electionNames={electionNames} />);
-    }).join('');
+        const voterCategory = categories.find(
+          c => c.id === voter.category
+        );
+
+        const electionNames =
+          voterCategory?.allowedElections
+            ?.map(eId => elections.find(e => e.id === eId)?.name)
+            .filter((name): name is string => !!name) || [];
+
+        return renderToStaticMarkup(
+          <VoterCard
+            voter={{
+              ...voter,
+              password: temporaryPassword,
+            }}
+            electionNames={electionNames}
+          />
+        );
+      })
+      .join('');
 
     printWindow.document.write(`
       <html>
@@ -331,7 +440,12 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
         </body>
       </html>
     `);
+
     printWindow.document.close();
+
+    // Password hanya disimpan sementara untuk proses pencetakan.
+    // Setelah HTML kartu dikirim ke jendela print, hapus dari state browser.
+    setTemporaryPasswords({});
     setIsPrinting(false);
   };
 
@@ -371,6 +485,16 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
             {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
             {printButtonLabel}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowBulkResetPasswordDialog(true)}
+            disabled={isBulkResettingPassword || enrichedVoters.length === 0}
+          >
+            {isBulkResettingPassword && numSelected === 0
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <KeyRound className="mr-2 h-4 w-4" />}
+            Reset Semua ({enrichedVoters.length})
+          </Button>
           <Button variant="outline" onClick={handleExportTemplate} disabled={isExporting}>
             {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
             Ekspor Template
@@ -391,6 +515,14 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
           <p className="text-sm font-medium">{numSelected} pemilih dipilih.</p>
           <Button size="sm" onClick={() => setShowBulkUpdateDialog(true)}>
             Ubah Kategori
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setShowBulkResetPasswordDialog(true)}
+            disabled={isBulkResettingPassword}
+          >
+            {isBulkResettingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Reset Password {numSelected} Pemilih
           </Button>
           <Button size="sm" variant="destructive" onClick={() => setShowBulkDeleteDialog(true)}>
             Hapus {numSelected} Pemilih
@@ -505,7 +637,16 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
         onOpenChange={setShowFormDialog}
         voter={selectedVoter}
         categories={categories}
-        onSuccess={refreshVoters}
+	onSuccess={async (data) => {
+	  await refreshVoters();
+
+	  if (data?.voterId && data.password) {
+	    setTemporaryPasswords(prev => ({
+	      ...prev,
+	      [data.voterId]: data.password,
+	    }));
+	  }
+	}}
       />
 
       {showImportDialog && <VoterImportDialog
@@ -514,7 +655,18 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
         data={importedData}
         categories={categories}
         existingVoters={voters}
-        onSuccess={refreshVoters}
+        onSuccess={async (data) => {
+          await refreshVoters();
+
+          if (data && data.length > 0) {
+            setTemporaryPasswords(prev => ({
+              ...prev,
+              ...Object.fromEntries(
+                data.map(item => [item.voterId, item.password])
+              ),
+            }));
+          }
+        }}
       />}
 
       {showBulkUpdateDialog && <BulkUpdateCategoryDialog
@@ -533,7 +685,14 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
           open={showResetPasswordDialog}
           onOpenChange={setShowResetPasswordDialog}
           voter={selectedVoter}
-          onSuccess={refreshVoters}
+	  onSuccess={async (data) => {
+	    await refreshVoters();
+
+	    setTemporaryPasswords(prev => ({
+	      ...prev,
+	      [data.voterId]: data.password,
+	    }));
+	  }}
         />
       )}
 
@@ -550,6 +709,43 @@ export function VoterTable({ voters, categories, elections, refreshVoters }: Vot
             <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90" disabled={isDeleting}>
               {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={showBulkResetPasswordDialog}
+        onOpenChange={setShowBulkResetPasswordDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {numSelected > 0
+                ? `Reset Password ${numSelected} Pemilih?`
+                : `Reset Password Semua ${enrichedVoters.length} Pemilih?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {numSelected > 0
+                ? `Password ${numSelected} pemilih yang dipilih akan diganti dengan password baru. Password lama tidak akan berlaku lagi.`
+                : `Password semua ${enrichedVoters.length} pemilih akan diganti dengan password baru. Password lama tidak akan berlaku lagi.`}
+              {' '}Setelah proses selesai, password baru dapat langsung dicetak pada kartu pemilih.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkResettingPassword}>
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkResetPassword}
+              disabled={isBulkResettingPassword}
+            >
+              {isBulkResettingPassword && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {numSelected > 0
+                ? `Ya, Reset ${numSelected} Password`
+                : `Ya, Reset Semua Password`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

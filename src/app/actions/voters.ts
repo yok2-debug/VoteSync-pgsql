@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { hashPassword, generateReadablePassword } from '@/lib/password';
 import { revalidatePath } from 'next/cache';
 
-export async function getVoters(options?: { includeSensitive?: boolean }): Promise<{ success: boolean; data?: Voter[]; message?: string }> {
+export async function getVoters(): Promise<{ success: boolean; data?: Voter[]; message?: string }> {
     try {
         await verifyAdminSession('voters');
 
@@ -19,11 +19,10 @@ export async function getVoters(options?: { includeSensitive?: boolean }): Promi
         }
 
         // Map to Voter type
-        const mappedVoters = voters.map((v: any) => ({
+        const sanitizedVoters = voters.map((v: any) => ({
             id: v.id,
             name: v.name,
             category: v.categoryId || '',
-            password: v.password,
             nik: v.nik || undefined,
             birthPlace: v.birthPlace || undefined,
             birthDate: v.birthDate || undefined,
@@ -31,12 +30,6 @@ export async function getVoters(options?: { includeSensitive?: boolean }): Promi
             address: v.address || undefined,
             hasVoted: (v.hasVoted as Record<string, boolean>) || {},
         })) as Voter[];
-
-        if (options?.includeSensitive) {
-            return { success: true, data: mappedVoters };
-        }
-
-        const sanitizedVoters = mappedVoters.map(({ password, ...voter }) => voter as Voter);
 
         return { success: true, data: sanitizedVoters };
     } catch (error: any) {
@@ -81,22 +74,19 @@ export async function getVoter(voterId: string): Promise<{ success: boolean; dat
             return { success: false, message: 'Pemilih tidak ditemukan.' };
         }
 
-        const mappedVoter: Voter = {
-            id: voter.id,
-            name: voter.name,
-            category: voter.categoryId || '',
-            password: voter.password,
-            nik: voter.nik || undefined,
-            birthPlace: voter.birthPlace || undefined,
-            birthDate: voter.birthDate || undefined,
-            gender: voter.gender as 'Laki-laki' | 'Perempuan' | undefined,
-            address: voter.address || undefined,
-            hasVoted: (voter.hasVoted as Record<string, boolean>) || {},
-        };
+	const sanitizedVoter: Voter = {
+	    id: voter.id,
+	    name: voter.name,
+	    category: voter.categoryId || '',
+	    nik: voter.nik || undefined,
+	    birthPlace: voter.birthPlace || undefined,
+	    birthDate: voter.birthDate || undefined,
+	    gender: voter.gender as 'Laki-laki' | 'Perempuan' | undefined,
+	    address: voter.address || undefined,
+	    hasVoted: (voter.hasVoted as Record<string, boolean>) || {},
+	};
 
-        const { password, ...sanitizedVoter } = mappedVoter;
-
-        return { success: true, data: sanitizedVoter as Voter };
+	return { success: true, data: sanitizedVoter };
     } catch (error: any) {
         if (error.name === 'AuthError') {
             logger.warn({ msg: error.message, voterId }, 'Authentication failed fetching voter');
@@ -133,7 +123,13 @@ export async function getVoterCountsByCategory(): Promise<{ success: boolean; da
 
 // --- Mutations ---
 
-export async function createVoter(data: Partial<Voter>): Promise<{ success: boolean; message?: string; data?: Voter }> {
+export async function createVoter(
+    data: Partial<Voter>
+): Promise<{
+    success: boolean;
+    message?: string;
+    data?: { voterId: string; password: string };
+}> {
     try {
         await verifyAdminSession('voters');
 
@@ -181,9 +177,8 @@ export async function createVoter(data: Partial<Voter>): Promise<{ success: bool
             return { success: false, message: `ID Pemilih '${voterId}' sudah ada.` };
         }
 
-        const plainPassword = data.password || generateReadablePassword();
-        // Storing password as plain text as requested
-        const hashedPassword = plainPassword;
+	const plainPassword = data.password || generateReadablePassword();
+	const hashedPassword = await hashPassword(plainPassword);
 
         await prisma.voter.create({
             data: {
@@ -200,22 +195,16 @@ export async function createVoter(data: Partial<Voter>): Promise<{ success: bool
             }
         });
 
-        const newVoterData: Voter = {
-            id: voterId,
-            name: data.name || '',
-            category: data.category || '',
-            password: plainPassword,
-            nik: data.nik || '',
-            birthPlace: data.birthPlace || '',
-            birthDate: data.birthDate || '',
-            gender: data.gender,
-            address: data.address || '',
-            hasVoted: {},
-        };
-
         logger.info({ voterId }, 'Voter created');
         revalidatePath('/admin/voters');
-        return { success: true, message: 'Pemilih berhasil dibuat', data: newVoterData };
+        return {
+            success: true,
+            message: 'Pemilih berhasil dibuat',
+            data: {
+                voterId,
+                password: plainPassword,
+            },
+        };
 
     } catch (error: any) {
         if (error.name === 'AuthError') {
@@ -227,7 +216,10 @@ export async function createVoter(data: Partial<Voter>): Promise<{ success: bool
     }
 }
 
-export async function updateVoter(voterId: string, data: Partial<Voter>): Promise<{ success: boolean; message?: string }> {
+export async function updateVoter(
+    voterId: string,
+    data: Partial<Voter>
+): Promise<{ success: boolean; message?: string; data?: { voterId: string; password?: string } }> {
     try {
         await verifyAdminSession('voters');
 
@@ -258,7 +250,7 @@ export async function updateVoter(voterId: string, data: Partial<Voter>): Promis
         });
 
         if (password) {
-            updateData.password = password;
+	    updateData.password = await hashPassword(password);
         }
 
         await prisma.voter.update({
@@ -268,7 +260,14 @@ export async function updateVoter(voterId: string, data: Partial<Voter>): Promis
 
         logger.info({ voterId }, 'Voter updated');
         revalidatePath('/admin/voters');
-        return { success: true, message: 'Pemilih berhasil diperbarui' };
+        return {
+            success: true,
+            message: 'Pemilih berhasil diperbarui',
+            data: {
+                voterId,
+                ...(password ? { password } : {}),
+            },
+        };
 
     } catch (error: any) {
         if (error.name === 'AuthError') {
@@ -342,7 +341,11 @@ export async function bulkUpdateVoterCategory(
 export async function resetVoterPassword(
     voterId: string,
     newPassword: string
-): Promise<{ success: boolean; message?: string }> {
+): Promise<{
+    success: boolean;
+    message?: string;
+    data?: { voterId: string; password: string };
+}> {
     try {
         await verifyAdminSession('voters');
 
@@ -363,11 +366,18 @@ export async function resetVoterPassword(
 
         await prisma.voter.update({
             where: { id: voterId },
-            data: { password: newPassword }
+	    data: { password: await hashPassword(newPassword) }
         });
 
         logger.info({ voterId }, 'Voter password reset');
-        return { success: true, message: 'Kata sandi berhasil direset.' };
+        return {
+            success: true,
+            message: 'Kata sandi berhasil direset.',
+            data: {
+                voterId,
+                password: newPassword,
+            },
+        };
 
     } catch (error: any) {
         if (error.name === 'AuthError') {
@@ -379,9 +389,85 @@ export async function resetVoterPassword(
     }
 }
 
+export async function resetVotersPasswords(
+    voterIds?: string[]
+): Promise<{
+    success: boolean;
+    message?: string;
+    data?: { voterId: string; password: string }[];
+}> {
+    try {
+        await verifyAdminSession('voters');
+
+        const voters = await prisma.voter.findMany({
+            where: voterIds && voterIds.length > 0
+                ? { id: { in: voterIds } }
+                : undefined,
+            select: { id: true },
+        });
+
+        if (voters.length === 0) {
+            return {
+                success: false,
+                message: 'Tidak ada pemilih yang dapat direset.',
+            };
+        }
+
+        const temporaryPasswords: { voterId: string; password: string }[] = [];
+
+        for (const voter of voters) {
+            const plainPassword = generateReadablePassword();
+            const hashedPassword = await hashPassword(plainPassword);
+
+            await prisma.voter.update({
+                where: { id: voter.id },
+                data: { password: hashedPassword },
+            });
+
+            temporaryPasswords.push({
+                voterId: voter.id,
+                password: plainPassword,
+            });
+        }
+
+        logger.info(
+            { count: temporaryPasswords.length },
+            'Voter passwords reset in bulk'
+        );
+
+        revalidatePath('/admin/voters');
+
+        return {
+            success: true,
+            message: `${temporaryPasswords.length} password pemilih berhasil direset.`,
+            data: temporaryPasswords,
+        };
+    } catch (error: any) {
+        if (error.name === 'AuthError') {
+            logger.warn(
+                { msg: error.message },
+                'Authentication failed bulk resetting voter passwords'
+            );
+            return { success: false, message: error.message };
+        }
+
+        logger.error({ err: error }, 'Error bulk resetting voter passwords');
+
+        return {
+            success: false,
+            message: 'Gagal mereset password pemilih.',
+        };
+    }
+}
+
 export async function importVoters(
     voters: any[]
-): Promise<{ success: boolean; message?: string; errors?: string[] }> {
+): Promise<{
+    success: boolean;
+    message?: string;
+    errors?: string[];
+    data?: { voterId: string; password: string }[];
+}> {
     try {
         await verifyAdminSession('voters');
 
@@ -402,6 +488,7 @@ export async function importVoters(
         });
 
         const votersToInsert: any[] = [];
+        const temporaryPasswords: { voterId: string; password: string }[] = [];
         const errors: string[] = [];
 
         for (const voterData of voters) {
@@ -420,8 +507,13 @@ export async function importVoters(
             }
 
             const plainPassword = voterData.password || generateReadablePassword();
-            // Storing password as plain text as requested
-            const hashedPassword = plainPassword;
+
+            const hashedPassword = await hashPassword(plainPassword);
+
+            temporaryPasswords.push({
+                voterId: id,
+                password: plainPassword,
+            });
 
             votersToInsert.push({
                 id: id,
@@ -463,7 +555,11 @@ export async function importVoters(
 
         logger.info({ count: votersToInsert.length }, 'Voters imported');
         revalidatePath('/admin/voters');
-        return { success: true, message: `${votersToInsert.length} pemilih berhasil diimpor.` };
+        return {
+            success: true,
+            message: `${votersToInsert.length} pemilih berhasil diimpor.`,
+            data: temporaryPasswords,
+        };
 
     } catch (error: any) {
         if (error.name === 'AuthError') {

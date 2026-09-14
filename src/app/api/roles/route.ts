@@ -32,10 +32,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: 'ID Peran wajib diisi untuk pengeditan.' }, { status: 400 });
       }
 
-      await prisma.role.update({
-        where: { id: roleId },
-        data: { name, permissions }
-      });
+      await prisma.$transaction([
+        prisma.role.update({
+          where: { id: roleId },
+          data: { name, permissions }
+        }),
+        prisma.appUser.updateMany({
+          where: { roleId },
+          data: {
+            sessionVersion: {
+              increment: 1,
+            },
+          },
+        }),
+      ]);
 
       return NextResponse.json({ message: 'Peran berhasil diperbarui', id: roleId }, { status: 200 });
     } else {

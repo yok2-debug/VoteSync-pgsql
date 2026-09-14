@@ -33,7 +33,7 @@ interface ResetPasswordDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voter: Voter;
-  onSuccess: () => Promise<void>;
+  onSuccess: (data: { voterId: string; password: string }) => Promise<void>;
 }
 
 export function ResetPasswordDialog({
@@ -73,7 +73,7 @@ export function ResetPasswordDialog({
         title: 'Reset Kata Sandi Berhasil',
         description: `Kata sandi untuk ${voter.name} telah diperbarui.`,
       });
-      await onSuccess();
+      await onSuccess(result.data!);
       onOpenChange(false);
     } catch (error) {
       toast({

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
+import { revokeAdminSessions } from '@/lib/session';
 import { handleApiError, verifyAdminSession } from '../lib/api-helpers';
 
 import { z } from 'zod';
@@ -74,6 +75,8 @@ export async function POST(request: Request) {
         where: { id: userId },
         data: updateData
       });
+
+      await revokeAdminSessions(userId);
 
       return NextResponse.json({ message: 'Pengguna berhasil diperbarui', id: userId }, { status: 200 });
 

@@ -21,11 +21,12 @@ model Role {
 }
 
 model AppUser {
-  id        String   @id
-  username  String   @unique
-  password  String
-  roleId    String?  @map("role_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String   @id
+  username       String   @unique
+  password       String
+  roleId         String?  @map("role_id")
+  sessionVersion Int      @default(1) @map("session_version")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   role Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
