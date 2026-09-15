@@ -177,9 +177,28 @@ export function VoterTable({
     setShowFormDialog(true);
   };
 
-  const handleEdit = (voter: Voter) => {
-    setSelectedVoter(voter);
-    setShowFormDialog(true);
+  const handleEdit = async (voter: Voter) => {
+    try {
+      const { getVoter } = await import('@/app/actions/voters');
+
+      const result = await getVoter(voter.id);
+
+      if (!result.success || !result.data) {
+        throw new Error(result.message || 'Gagal mengambil data pemilih.');
+      }
+
+      setSelectedVoter(result.data);
+      setShowFormDialog(true);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Gagal membuka data pemilih',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Terjadi kesalahan tidak diketahui.',
+      });
+    }
   };
 
   const handleDelete = (voter: Voter) => {

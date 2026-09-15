@@ -56,23 +56,27 @@ export async function getVoters(): Promise<{ success: boolean; data?: Voter[]; m
     try {
         await verifyAdminSession('voters');
 
-        const voters = await prisma.voter.findMany();
+        const voters = await prisma.voter.findMany({
+            select: {
+                id: true,
+                name: true,
+                categoryId: true,
+                nik: true,
+                hasVoted: true,
+            },
+        });
 
         if (!voters || voters.length === 0) {
             return { success: true, data: [] };
         }
 
         // Map to Voter type
-        const sanitizedVoters = voters.map((v: any) => ({
-            id: v.id,
-            name: v.name,
-            category: v.categoryId || '',
-            nik: v.nik || undefined,
-            birthPlace: v.birthPlace || undefined,
-            birthDate: v.birthDate || undefined,
-            gender: v.gender as 'Laki-laki' | 'Perempuan' | undefined,
-            address: v.address || undefined,
-            hasVoted: (v.hasVoted as Record<string, boolean>) || {},
+        const sanitizedVoters = voters.map((voter) => ({
+            id: voter.id,
+            name: voter.name,
+            category: voter.categoryId || '',
+            nik: voter.nik || undefined,
+            hasVoted: (voter.hasVoted as Record<string, boolean>) || {},
         })) as Voter[];
 
         return { success: true, data: sanitizedVoters };
