@@ -50,7 +50,14 @@ export function LoginForm() {
         throw new Error(result.message || 'Login gagal.');
       }
 
-      setVoterSession({ voterId: result.voterId });
+      if (typeof result.sessionVersion !== 'number') {
+        throw new Error('Session login tidak valid.');
+      }
+
+      setVoterSession({
+        voterId: result.voterId,
+        sessionVersion: result.sessionVersion,
+      });
 
       toast({
         title: 'Login Berhasil',

@@ -86,5 +86,6 @@ export interface AdminSessionPayload {
 
 export interface VoterSessionPayload {
   voterId: string;
+  sessionVersion: number;
   expires?: number;
 }

@@ -13,7 +13,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel"
 import { getPublicElections, getPublicCategories } from '@/app/actions/public';
-import { getVoterCountsByCategory } from '@/app/actions/voters';
+import { getPublicVoterCountsByCategory } from '@/app/actions/voters';
 import type { Election, Category } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
@@ -33,7 +33,7 @@ export default function RealCountPage() {
         const [electionsResult, categoriesResult, voterCountsResult] = await Promise.all([
           getPublicElections(),
           getPublicCategories(),
-          getVoterCountsByCategory()
+          getPublicVoterCountsByCategory()
         ]);
 
         if (isMounted) {

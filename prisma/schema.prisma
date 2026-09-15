@@ -50,8 +50,9 @@ model Voter {
   id         String   @id
   name       String
   categoryId String?  @map("category_id")
-  password   String
-  nik        String?
+  password       String
+  sessionVersion Int      @default(1) @map("session_version")
+  nik            String?
   birthPlace String?  @map("birth_place")
   birthDate  String?  @map("birth_date")
   gender     String?

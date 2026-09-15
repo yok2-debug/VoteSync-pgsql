@@ -149,6 +149,8 @@ export async function getVoter(voterId: string): Promise<{ success: boolean; dat
 
 export async function getVoterCountsByCategory(): Promise<{ success: boolean; data?: Record<string, number>; message?: string }> {
     try {
+        await verifyAdminSession('voters');
+
         const voters = await prisma.voter.findMany({
             select: { categoryId: true }
         });
@@ -168,6 +170,29 @@ export async function getVoterCountsByCategory(): Promise<{ success: boolean; da
     } catch (error) {
         logger.error({ err: error }, 'Error counting voters');
         return { success: false, message: 'Gagal menghitung pemilih.' };
+    }
+}
+
+// Public aggregate-only voter counts for the real-count display.
+// This exposes no individual voter data.
+export async function getPublicVoterCountsByCategory(): Promise<{ success: boolean; data?: Record<string, number>; message?: string }> {
+    try {
+        const voters = await prisma.voter.findMany({
+            select: { categoryId: true }
+        });
+
+        const counts: Record<string, number> = {};
+
+        voters.forEach((v: { categoryId: string | null }) => {
+            if (v.categoryId) {
+                counts[v.categoryId] = (counts[v.categoryId] || 0) + 1;
+            }
+        });
+
+        return { success: true, data: counts };
+    } catch (error) {
+        logger.error({ err: error }, 'Error counting public voter statistics');
+        return { success: false, message: 'Gagal menghitung statistik pemilih.' };
     }
 }
 
@@ -319,6 +344,9 @@ export async function updateVoter(
 
         if (password) {
 	    updateData.password = await hashPassword(password);
+	    updateData.sessionVersion = {
+	        increment: 1,
+	    };
         }
 
         await prisma.voter.update({
@@ -449,7 +477,12 @@ export async function resetVoterPassword(
 
         await prisma.voter.update({
             where: { id: validVoterId },
-	    data: { password: await hashPassword(validNewPassword) }
+            data: {
+                password: await hashPassword(validNewPassword),
+                sessionVersion: {
+                    increment: 1,
+                },
+            }
         });
 
         logger.info({ voterId: validVoterId }, 'Voter password reset');
@@ -510,7 +543,12 @@ export async function resetVotersPasswords(
 
             await prisma.voter.update({
                 where: { id: voter.id },
-                data: { password: hashedPassword },
+                data: {
+                    password: hashedPassword,
+                    sessionVersion: {
+                        increment: 1,
+                    },
+                },
             });
 
             temporaryPasswords.push({

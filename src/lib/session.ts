@@ -71,25 +71,28 @@ export async function getAdminSession(): Promise<AdminSessionPayload | null> {
 
 const VOTER_SESSION_COOKIE_NAME = 'votesync_voter_session';
 
-export async function createVoterSession(payload: Omit<VoterSessionPayload, 'expires'>) {
+export async function createVoterSession(voterId: string) {
+  const voter = await prisma.voter.findUnique({
+    where: { id: voterId },
+    select: { sessionVersion: true },
+  });
+
+  if (!voter) {
+    throw new Error('Voter not found');
+  }
+
   const expires = new Date(Date.now() + SESSION_DURATION);
-  // Reuse encrypt function (it handles generic payload if typed correctly, or we cast)
-  // AdminSessionPayload has specific fields, but encrypt takes Omit<AdminSessionPayload, 'expires'>.
-  // We might need to update encrypt signature or cast payload.
-  // Let's check auth.ts encrypt signature.
-  // It expects AdminSessionPayload. We should generalize it or cast.
-  // For now, let's cast to any to bypass strict type check for the generic encrypt, 
-  // or better, update auth.ts to be generic. 
-  // But updating auth.ts might break other things. 
-  // Let's assume encrypt can handle it if we cast.
-  const session = await encrypt(payload);
+  const session = await encrypt({
+    voterId,
+    sessionVersion: voter.sessionVersion,
+  });
 
   const cookieStore = await cookies();
 
   cookieStore.set(VOTER_SESSION_COOKIE_NAME, session, {
     httpOnly: true,
     secure: isSecureCookie,
-    expires: expires,
+    expires,
     path: '/',
     sameSite: 'lax',
   });
@@ -100,9 +103,25 @@ export async function deleteVoterSession() {
   cookieStore.delete(VOTER_SESSION_COOKIE_NAME);
 }
 
-export async function getVoterSession() {
+export async function getVoterSession(): Promise<VoterSessionPayload | null> {
   const cookieStore = await cookies();
-  const session = cookieStore.get(VOTER_SESSION_COOKIE_NAME)?.value;
-  if (!session) return null;
-  return await decrypt(session) as unknown as VoterSessionPayload;
+  const sessionCookie = cookieStore.get(VOTER_SESSION_COOKIE_NAME)?.value;
+
+  if (!sessionCookie) return null;
+
+  const voterSession = await decrypt(sessionCookie) as VoterSessionPayload | null;
+  if (!voterSession?.voterId || !voterSession.sessionVersion) {
+    return null;
+  }
+
+  const voter = await prisma.voter.findUnique({
+    where: { id: voterSession.voterId },
+    select: { sessionVersion: true },
+  });
+
+  if (!voter || voter.sessionVersion !== voterSession.sessionVersion) {
+    return null;
+  }
+
+  return voterSession;
 }

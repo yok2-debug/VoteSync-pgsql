@@ -151,9 +151,14 @@ export async function loginVoter(prevState: any, formData: FormData) {
             return { success: false, message: 'ID Pemilih atau password tidak valid.' };
         }
 
-        await createVoterSession({ voterId });
+        await createVoterSession(voterId);
 
-        return { success: true, message: 'Login berhasil', voterId: voterId };
+        return {
+            success: true,
+            message: 'Login berhasil',
+            voterId: voterId,
+            sessionVersion: voterData.sessionVersion,
+        };
 
     } catch (error) {
         logger.error({ err: error }, 'Voter login error');
