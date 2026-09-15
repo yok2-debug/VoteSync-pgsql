@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
 import { revokeAdminSessions } from '@/lib/session';
-import { handleApiError, parseJsonBody, verifyAdminSession } from '../lib/api-helpers';
+import {
+  handleApiError,
+  parseJsonBody,
+  verifyAdminSession,
+  assertManageableRole,
+} from '../lib/api-helpers';
 
 import { z } from 'zod';
 
@@ -30,7 +35,7 @@ const userSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    await verifyAdminSession('users');
+    const session = await verifyAdminSession('users');
     const json = await parseJsonBody(request);
 
     // Validate request body with Zod
@@ -55,11 +60,47 @@ export async function POST(request: Request) {
       }
 
       const existingUser = await prisma.appUser.findUnique({
-        where: { id: userId }
+        where: { id: userId },
+        select: {
+          id: true,
+          roleId: true,
+        },
       });
 
       if (!existingUser) {
         return NextResponse.json({ message: 'Pengguna tidak ditemukan.' }, { status: 404 });
+      }
+
+      const targetRole = await prisma.role.findUnique({
+        where: { id: roleId },
+        select: {
+          id: true,
+          permissions: true,
+        },
+      });
+
+      if (!targetRole) {
+        return NextResponse.json({ message: 'Peran pengguna tidak ditemukan.' }, { status: 404 });
+      }
+
+      assertManageableRole(session.permissions, targetRole.permissions);
+
+      if (existingUser.roleId && existingUser.roleId !== roleId) {
+        const currentTargetRole = await prisma.role.findUnique({
+          where: { id: existingUser.roleId },
+          select: {
+            permissions: true,
+          },
+        });
+
+        if (!currentTargetRole) {
+          return NextResponse.json(
+            { message: 'Peran pengguna tidak ditemukan.' },
+            { status: 409 }
+          );
+        }
+
+        assertManageableRole(session.permissions, currentTargetRole.permissions);
       }
 
       const updateData: any = {
@@ -86,6 +127,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: `Username "${username}" sudah digunakan.` }, { status: 409 });
       }
 
+      const targetRole = await prisma.role.findUnique({
+        where: { id: roleId },
+        select: {
+          permissions: true,
+        },
+      });
+
+      if (!targetRole) {
+        return NextResponse.json({ message: 'Peran pengguna tidak ditemukan.' }, { status: 404 });
+      }
+
+      assertManageableRole(session.permissions, targetRole.permissions);
+
       const newUserId = `user-${Date.now()}`;
       await prisma.appUser.create({
         data: {
@@ -109,7 +163,7 @@ const deleteUserSchema = z.object({
 
 export async function DELETE(request: Request) {
   try {
-    await verifyAdminSession('users');
+    const session = await verifyAdminSession('users');
     const json = await parseJsonBody(request);
 
     const result = deleteUserSchema.safeParse(json);
@@ -122,11 +176,41 @@ export async function DELETE(request: Request) {
     // Check if trying to delete admin user
     const user = await prisma.appUser.findUnique({
       where: { id: userId },
-      select: { username: true }
+      select: {
+        id: true,
+        username: true,
+        roleId: true,
+      }
     });
 
-    if (user && user.username === 'admin') {
+    if (!user) {
+      return NextResponse.json({ message: 'Pengguna tidak ditemukan.' }, { status: 404 });
+    }
+
+    if (user.username === 'admin') {
       return NextResponse.json({ message: 'Pengguna "admin" tidak dapat dihapus.' }, { status: 403 });
+    }
+
+    if (user.id === session.userId) {
+      return NextResponse.json({ message: 'Anda tidak dapat menghapus akun Anda sendiri.' }, { status: 403 });
+    }
+
+    if (user.roleId) {
+      const targetRole = await prisma.role.findUnique({
+        where: { id: user.roleId },
+        select: {
+          permissions: true,
+        },
+      });
+
+      if (!targetRole) {
+        return NextResponse.json(
+          { message: 'Peran pengguna tidak ditemukan.' },
+          { status: 409 }
+        );
+      }
+
+      assertManageableRole(session.permissions, targetRole.permissions);
     }
 
     await prisma.appUser.delete({

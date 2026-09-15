@@ -8,28 +8,51 @@ import { hashPassword } from '@/lib/password';
 export async function initializeDefaultAdmin(): Promise<void> {
   try {
     // 1. Check for Super Admin role
-    const existingRole = await prisma.role.findFirst({
-      where: { name: 'Super Admin' }
+    const existingRole = await prisma.role.findUnique({
+      where: { id: 'role_super_admin' }
     });
 
-    let superAdminRoleId: string | null = null;
+    const allPermissions: Permission[] = [
+      'dashboard',
+      'elections',
+      'candidates',
+      'voters',
+      'categories',
+      'recapitulation',
+      'real_count',
+      'settings',
+      'users',
+      'committees',
+    ];
+
+    let superAdminRoleId = 'role_super_admin';
 
     if (existingRole) {
-      superAdminRoleId = existingRole.id;
+      const hasAllPermissions =
+        allPermissions.length === existingRole.permissions.length &&
+        allPermissions.every((permission) => existingRole.permissions.includes(permission));
+
+      if (
+        existingRole.name !== 'Super Admin' ||
+        !hasAllPermissions
+      ) {
+        await prisma.role.update({
+          where: { id: 'role_super_admin' },
+          data: {
+            name: 'Super Admin',
+            permissions: allPermissions,
+          },
+        });
+      }
     } else {
       // Create Super Admin role if it doesn't exist
-      const allPermissions: Permission[] = ['dashboard', 'elections', 'candidates', 'voters', 'categories', 'recapitulation', 'real_count', 'settings', 'users', 'committees'];
-      const newRoleId = 'role-super-admin';
-
       await prisma.role.create({
         data: {
-          id: newRoleId,
+          id: 'role_super_admin',
           name: 'Super Admin',
-          permissions: allPermissions
-        }
+          permissions: allPermissions,
+        },
       });
-
-      superAdminRoleId = newRoleId;
     }
 
     // 2. Check if 'admin' user exists

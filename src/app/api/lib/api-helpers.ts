@@ -40,6 +40,36 @@ export async function verifyAdminSession(requiredPermission?: Permission): Promi
   return session;
 }
 
+/**
+ * Memastikan administrator hanya dapat mengelola role
+ * yang permission-nya merupakan subset dari permission miliknya.
+ *
+ * Dengan aturan ini, administrator dengan permission terbatas
+ * tidak dapat membuat/memberikan role yang lebih tinggi dari dirinya.
+ */
+export function canManagePermissions(
+  actorPermissions: Permission[],
+  targetPermissions: string[]
+): boolean {
+  const actorSet = new Set(actorPermissions);
+
+  return targetPermissions.every((permission) => actorSet.has(permission as Permission));
+}
+
+/**
+ * Memastikan role target dapat dikelola oleh administrator saat ini.
+ */
+export function assertManageableRole(
+  actorPermissions: Permission[],
+  targetPermissions: string[]
+): void {
+  if (!canManagePermissions(actorPermissions, targetPermissions)) {
+    throw new AuthError(
+      'Akses ditolak. Anda tidak dapat mengelola peran dengan hak akses yang melebihi hak akses Anda.'
+    );
+  }
+}
+
 export function handleApiError(error: unknown): NextResponse {
   if (error instanceof InvalidJsonError) {
     return NextResponse.json(

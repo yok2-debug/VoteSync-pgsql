@@ -2,24 +2,30 @@
 
 import { prisma } from '@/lib/prisma';
 import type { Role } from '@/lib/types';
-import { verifyAdminSession } from '@/app/api/lib/api-helpers';
+import { verifyAdminSession, canManagePermissions } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
 
 export async function getRoles(): Promise<{ success: boolean; data?: Role[]; message?: string }> {
     try {
-        await verifyAdminSession(); // Basic check
+        const session = await verifyAdminSession('users');
 
-        const rolesData = await prisma.role.findMany();
+        const rolesData = await prisma.role.findMany({
+            orderBy: { name: 'asc' },
+        });
 
         if (!rolesData || rolesData.length === 0) {
             return { success: true, data: [] };
         }
 
-        const roles = rolesData.map((r: { id: string; name: string; permissions: string[] }) => ({
-            id: r.id,
-            name: r.name,
-            permissions: r.permissions || [],
-        })) as Role[];
+        const roles = rolesData
+            .filter((r: { id: string; name: string; permissions: string[] }) =>
+                canManagePermissions(session.permissions, r.permissions || [])
+            )
+            .map((r: { id: string; name: string; permissions: string[] }) => ({
+                id: r.id,
+                name: r.name,
+                permissions: r.permissions || [],
+            })) as Role[];
 
         return { success: true, data: roles };
     } catch (error: any) {
