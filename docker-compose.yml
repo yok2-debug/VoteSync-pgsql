@@ -11,7 +11,7 @@ services:
       - .env
     environment:
       # DATABASE_URL dibentuk dari variabel postgres agar konsisten
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-votesync}:${POSTGRES_PASSWORD:-votesync11}@postgres:5432/${POSTGRES_DB:-votesync}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-votesync}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-votesync}
     depends_on:
       postgres:
         condition: service_healthy
@@ -24,7 +24,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-votesync}:${POSTGRES_PASSWORD:-votesync11}@postgres:5432/${POSTGRES_DB:-votesync}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-votesync}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-votesync}
     command: sh -c "npx prisma db push && node prisma/seed.js"
     depends_on:
       postgres:
@@ -38,10 +38,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-votesync}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-votesync11}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-votesync}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - votesync_pgdata:/var/lib/postgresql/data
     healthcheck:

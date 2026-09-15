@@ -95,7 +95,11 @@ export async function POST(request: Request) {
     }
 
     // Create secure vote hash for anonymity
-    const VOTE_SECRET = process.env.VOTE_SECRET_SALT || 'default-secret-salt-change-me';
+    const VOTE_SECRET = process.env.VOTE_SECRET_SALT;
+
+    if (!VOTE_SECRET) {
+      throw new Error('VOTE_SECRET_SALT is not configured');
+    }
     // Gunakan SHA-256 dan sertakan electionId agar unik per pemilihan jika salt sama
     const voterIdHash = crypto
       .createHash('sha256')

@@ -81,7 +81,6 @@ Aplikasi ini dibangun menggunakan:
    POSTGRES_USER="votesync"
    POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
    POSTGRES_DB="votesync"
-   POSTGRES_PORT="5432"
 
    # ----- Aplikasi -----
    APP_PORT="3000"
@@ -98,7 +97,7 @@ Aplikasi ini dibangun menggunakan:
    ```bash
    node prisma/seed.js
    ```
-   *Login: **Username** `admin` / **Password** `admin`*
+   *Login: **Username** `admin` / **Password** sesuai nilai `INITIAL_ADMIN_PASSWORD` saat bootstrap*
 
 6. **Jalankan Aplikasi**
    ```bash
@@ -132,7 +131,6 @@ Aplikasi ini dibangun menggunakan:
    POSTGRES_USER="votesync"
    POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
    POSTGRES_DB="votesync"
-   POSTGRES_PORT="5432"
 
    # ----- Aplikasi -----
    APP_PORT="3000"
@@ -204,7 +202,6 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
    POSTGRES_USER="votesync"
    POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
    POSTGRES_DB="votesync"
-   POSTGRES_PORT="5432"
 
    # ----- Aplikasi -----
    APP_PORT="3000"
@@ -251,16 +248,16 @@ Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secar
    🚀 Your database is now in sync with your Prisma schema.
    Seeding database...
    Role Super Admin verified/created.
-   Admin user 'admin' verified/created with default password: admin
+   Admin user 'admin' verified/created; password is supplied through `INITIAL_ADMIN_PASSWORD` during initial bootstrap
    ```
    > Perintah ini menggunakan service `migrate` yang telah dikonfigurasi di `docker-compose.yml` dengan full `node_modules` (stage builder), sehingga kompatibel penuh dengan Prisma 7.
 
 7. **Akses Aplikasi**
    - **Portal Publik**: `http://<IP-SERVER-ANDA>:<APP_PORT>`
    - **Portal Admin**: `http://<IP-SERVER-ANDA>:<APP_PORT>/admin-login`
-   - Login pertama: **Username** `admin` / **Password** `admin`
+   - Login pertama: **Username** `admin` / **Password** sesuai nilai `INITIAL_ADMIN_PASSWORD`
 
-   > 🔑 Segera ganti password `admin` default setelah login pertama!
+   > 🔑 Gunakan password bootstrap yang kuat dan segera ganti password setelah login pertama.
 
 8. **Perintah Pemeliharaan (Maintenance)**
 
@@ -322,7 +319,6 @@ Jika server/VPS Anda menggunakan **Portainer**, cara terbaik dan paling direkome
    POSTGRES_USER=votesync
    POSTGRES_PASSWORD=ganti-dengan-password-kuat-anda
    POSTGRES_DB=votesync
-   POSTGRES_PORT=5432
    JWT_SECRET_KEY=isi-dengan-hasil-openssl-rand-hex-32
    VOTE_SECRET_SALT=isi-dengan-hasil-openssl-rand-hex-32-yang-berbeda
    COOKIE_SECURE=false
@@ -344,22 +340,24 @@ Jika server/VPS Anda menggunakan **Portainer**, cara terbaik dan paling direkome
      ```bash
      npx prisma db push && node prisma/seed.js
      ```
-   - Akun Super Admin siap digunakan: **Username**: `admin` / **Password**: `admin`.
+   - Akun Super Admin dibuat hanya saat belum ada akun `admin`. Password awal diambil dari `INITIAL_ADMIN_PASSWORD`.
 
 ---
 
 ## 🔑 Akun Default (Seed)
 
-Jika Anda menjalankan seed database, akun administrator default biasanya adalah:
+Jika menjalankan seed database pada instalasi baru:
+- Akun `admin` hanya dibuat jika belum ada.
 - **Username**: `admin`
-- **Password**: `admin`
+- **Password**: nilai `INITIAL_ADMIN_PASSWORD` yang Anda tentukan saat bootstrap.
+- Password admin yang sudah ada **tidak ditimpa oleh seed**.
 
-*(Pastikan untuk mengubah password ini segera setelah login pertama di environment produksi!)*
+*(Gunakan password bootstrap yang kuat dan ubah password tersebut setelah login pertama di environment produksi.)*
 
 ## 📝 Catatan Keamanan
 
 - **Password Pemilih**: Aplikasi ini dikonfigurasi untuk menyimpan password pemilih dalam format **plain text**. Hal ini disengaja untuk memudahkan distribusi kredensial (cetak kartu fisik) kepada pemilih dalam lingkungan tertutup. Pastikan database Anda terlindungi dengan baik.
-- **Password Admin**: Password administrator di-hash menggunakan bcrypt untuk keamanan.
+- **Password Admin**: Password administrator ditentukan melalui `INITIAL_ADMIN_PASSWORD` saat bootstrap dan disimpan menggunakan bcrypt.
 - **Anonimitas Suara**: Identitas pemilih dalam tabel suara disamarkan menggunakan **SHA-256 + VOTE_SECRET_SALT**, sehingga tidak ada yang bisa melacak siapa memilih siapa, bahkan dari dalam database.
 - **Validasi Voting**: Sistem memvalidasi status pemilihan (aktif/tidak aktif), rentang waktu (`startDate`/`endDate`), dan hak kategori pemilih sebelum suara diterima — voting tidak bisa dimanipulasi langsung melalui API.
 - **Hasil Real-time**: Data perolehan suara hanya dipublikasikan jika admin mengaktifkan fitur *Real Count*, atau setelah waktu `endDate` pemilihan terlampaui.

@@ -40,24 +40,34 @@ async function main() {
   });
   console.log('Role Super Admin verified/created.');
 
-  // 2. Hash password for admin: 'admin'
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash('admin', salt);
-
-  // 3. Create or update admin user
-  const adminUser = await prisma.appUser.upsert({
+  // 2. Create the initial admin only when it does not exist.
+  // Existing admin passwords are never overwritten by the seed.
+  const existingAdmin = await prisma.appUser.findUnique({
     where: { username: 'admin' },
-    update: {
-      roleId: superAdminRole.id,
-    },
-    create: {
-      id: 'user_admin_default',
-      username: 'admin',
-      password: hashedPassword,
-      roleId: superAdminRole.id,
-    },
   });
-  console.log(`Admin user '${adminUser.username}' verified/created with default password: admin`);
+
+  if (!existingAdmin) {
+    const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+
+    if (!initialAdminPassword) {
+      throw new Error('INITIAL_ADMIN_PASSWORD is not configured');
+    }
+
+    const hashedPassword = await bcrypt.hash(initialAdminPassword, 12);
+
+    await prisma.appUser.create({
+      data: {
+        id: 'user_admin_default',
+        username: 'admin',
+        password: hashedPassword,
+        roleId: superAdminRole.id,
+      },
+    });
+
+    console.log('Initial Super Admin account created.');
+  } else {
+    console.log('Admin user already exists; password was not changed.');
+  }
 }
 
 main()

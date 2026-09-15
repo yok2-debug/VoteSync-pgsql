@@ -2,12 +2,10 @@
 
 import { prisma } from '@/lib/prisma';
 import type { AdminUser, Role, Permission } from '@/lib/types';
-import { hashPassword } from '@/lib/password';
 
 
 export async function initializeDefaultAdmin(): Promise<void> {
   try {
-    // 1. Check for Super Admin role
     const existingRole = await prisma.role.findUnique({
       where: { id: 'role_super_admin' }
     });
@@ -24,8 +22,6 @@ export async function initializeDefaultAdmin(): Promise<void> {
       'users',
       'committees',
     ];
-
-    let superAdminRoleId = 'role_super_admin';
 
     if (existingRole) {
       const hasAllPermissions =
@@ -45,30 +41,12 @@ export async function initializeDefaultAdmin(): Promise<void> {
         });
       }
     } else {
-      // Create Super Admin role if it doesn't exist
       await prisma.role.create({
         data: {
           id: 'role_super_admin',
           name: 'Super Admin',
           permissions: allPermissions,
         },
-      });
-    }
-
-    // 2. Check if 'admin' user exists
-    const existingAdmin = await prisma.appUser.findFirst({
-      where: { username: 'admin' }
-    });
-
-    // 3. If 'admin' user doesn't exist, create it
-    if (!existingAdmin && superAdminRoleId) {
-      await prisma.appUser.create({
-        data: {
-          id: 'user-admin',
-          username: 'admin',
-          password: await hashPassword('admin'),
-          roleId: superAdminRoleId
-        }
       });
     }
   } catch (error) {
