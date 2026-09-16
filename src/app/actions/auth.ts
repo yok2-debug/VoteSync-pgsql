@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { createAdminSession, createVoterSession } from '@/lib/session';
 import type { AdminSessionPayload, Permission, Role, AdminUser } from '@/lib/types';
-import { hashPassword, verifyPassword } from '@/lib/password';
+import { verifyPassword } from '@/lib/password';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
 
@@ -16,10 +16,6 @@ const voterLoginSchema = z.object({
     voterId: z.string().min(1),
     password: z.string().min(1),
 });
-
-function isBcryptHash(value: string): boolean {
-    return /^\$2[aby]\$\d{2}\$/.test(value);
-}
 
 export async function loginAdmin(prevState: any, formData: FormData) {
     const loginResult = adminLoginSchema.safeParse({
@@ -120,32 +116,8 @@ export async function loginVoter(prevState: any, formData: FormData) {
             return { success: false, message: 'ID Pemilih atau password tidak valid.' };
         }
 
-	const storedPassword = voterData.password || '';
-
-        let isValid = false;
-
-        if (isBcryptHash(storedPassword)) {
-            // Password baru: verifikasi menggunakan bcrypt.
-            isValid = await verifyPassword(password, storedPassword);
-        } else {
-            // Kompatibilitas dengan data lama yang masih plaintext.
-            isValid = password === storedPassword;
-
-            if (isValid) {
-                // Migrasi otomatis plaintext -> bcrypt setelah login berhasil.
-                const hashedPassword = await hashPassword(password);
-
-                await prisma.voter.update({
-                    where: { id: voterData.id },
-                    data: { password: hashedPassword },
-                });
-
-                logger.info(
-                    { voterId: voterData.id },
-                    'Migrated legacy voter password to bcrypt'
-                );
-            }
-        }
+        const storedPassword = voterData.password || '';
+        const isValid = await verifyPassword(password, storedPassword);
 
         if (!isValid) {
             return { success: false, message: 'ID Pemilih atau password tidak valid.' };

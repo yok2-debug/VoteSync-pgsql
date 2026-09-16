@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 
 export async function hashPassword(password: string): Promise<string> {
     const salt = await bcrypt.genSalt(10);
@@ -9,11 +10,11 @@ export async function verifyPassword(plain: string, hashed: string): Promise<boo
     return await bcrypt.compare(plain, hashed);
 }
 
-export function generateReadablePassword(length: number = 5): string {
+export function generateReadablePassword(length: number = 6): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excludes I, 1, O, 0
     let password = '';
     for (let i = 0; i < length; i++) {
-        password += chars.charAt(Math.floor(Math.random() * chars.length));
+        password += chars[randomInt(chars.length)];
     }
     return password;
 }
