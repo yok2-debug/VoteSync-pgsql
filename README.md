@@ -1,6 +1,6 @@
 # VoteSync - Sistem E-Voting Modern
 
-VoteSync adalah aplikasi E-Voting (pemungutan suara elektronik) full-stack yang dirancang untuk menyediakan platform pemilihan yang aman, efisien, dan transparan. Dibangun menggunakan teknologi web modern terkini.
+VoteSync adalah aplikasi E-Voting (pemungutan suara elektronik) full-stack yang dirancang untuk menyediakan platform pemilihan yang aman, efisien, dan transparan. Dikembangkan secara khusus untuk memenuhi kebutuhan digitalisasi di lingkungan sekolah, aplikasi ini hadir sebagai solusi modern untuk mensukseskan agenda demokrasi di SMA Negeri 1 Sapeken, baik dalam pelaksaan Pemilihan Ketua OSIS maupun Pemilihan Ketua Kelas secara praktis dan terintegrasi.
 
 ## 🛠️ Teknologi Stack
 
@@ -18,26 +18,32 @@ Aplikasi ini dibangun menggunakan:
 ## ✨ Fitur Utama
 
 ### 1. Portal Publik
-- **Daftar Pemilihan**: Melihat pemilihan yang sedang berlangsung.
+
+- **Daftar Pemilihan**: Melihat pemilihan yang tersedia.
 - **Profil Kandidat**: Informasi detail, visi, dan misi setiap kandidat.
-- **Real Count**: Dasbor publik untuk memantau hasil suara sementara secara real-time.
+- **Real Count**: Menampilkan hasil pemilihan yang sudah berakhir. Hasil pemilihan yang masih berlangsung tidak ditampilkan kepada publik.
 
 ### 2. Portal Pemilih
-- **Login Sederhana**: Menggunakan ID Pemilih dan Password yang telah didistribusikan.
+
+- **Login Sederhana**: Menggunakan ID Pemilih dan password yang telah didistribusikan.
 - **One Voter, One Vote**: Sistem memastikan setiap pemilih hanya dapat memberikan satu suara per pemilihan.
-- **Antarmuka Intuitif**: Desain yang mudah digunakan oleh semua kalangan.
+- **Antarmuka Intuitif**: Desain yang mudah digunakan.
 
 ### 3. Portal Admin
-- **Role-Based Access Control (RBAC)**: Manajemen hak akses granular untuk berbagai peran admin (misal: Komisi Pemilihan, Pengawas, Operator).
+
+- **Role-Based Access Control (RBAC)**: Manajemen hak akses granular untuk berbagai peran admin.
 - **Manajemen Data**:
-  - **Pemilih**: CRUD data pemilih, import massal dari CSV, dan manajemen password plain-text untuk keperluan cetak kartu.
+  - **Pemilih**: CRUD data pemilih, import massal menggunakan XLSX, serta pembuatan dan pengelolaan password.
   - **Kandidat**: Pengelolaan data kandidat, foto, dan nomor urut.
   - **Panitia**: Manajemen struktur panitia pemilihan.
-  - **Kategori**: Pengelompokan pemilih dan kandidat.
+  - **Kategori**: Pengelompokan pemilih dan pengaturan pemilihan yang dapat diikuti.
+  - **Pengguna Admin**: Pengelolaan akun administrator sesuai hak akses.
 - **Tools**:
-  - **Cetak Kartu**: Pembuatan kartu login pemilih secara otomatis.
-  - **Rekapitulasi**: Laporan statistik lengkap dan Berita Acara.
-  - **Reset Data**: Fitur aman untuk mereset data pemilihan jika diperlukan.
+  - **Cetak Kartu**: Pembuatan kartu login pemilih. Password sementara ditampilkan untuk kebutuhan distribusi/cetak dan tidak disimpan sebagai plaintext di database.
+  - **Rekapitulasi**: Laporan statistik dan hasil pemilihan.
+  - **Real Count**: Monitoring hasil seluruh pemilihan untuk admin dengan permission `real_count`.
+  - **Pengaturan Real Count**: Memilih satu pemilihan sebagai pemilihan utama pada tampilan Real Count.
+  - **Reset System**: Reset sistem pemilihan, hanya dapat dilakukan oleh Super Admin.
 
 ---
 
@@ -48,106 +54,119 @@ Aplikasi ini dibangun menggunakan:
 1. **Clone Repositori**
    ```bash
    git clone https://github.com/yok2-debug/VoteSync-pgsql.git
-   cd VoteSync
+   cd VoteSync-pgsql
    ```
 
 2. **Install Dependensi**
    ```bash
    npm install
    ```
-   > Perintah ini otomatis menjalankan `prisma generate` via script `postinstall`.
+   > Perintah ini otomatis menjalankan `prisma generate` melalui script `postinstall`.
 
 3. **Konfigurasi Environment**
-   Copy file `env.example` menjadi `.env` dan sesuaikan isinya:
+   Copy file `env.example` menjadi `.env`:
    ```bash
    cp env.example .env
    ```
-   Isi file `.env`:
+   Edit `.env`:
    ```env
    # ----- Keamanan -----
 
    # Generate dengan: openssl rand -hex 32
    JWT_SECRET_KEY="paste-hasil-openssl-rand-hex-32-disini"
 
-   # Salt untuk anonymisasi suara (SHA-256). JANGAN diubah setelah pemilihan berjalan!
+   # Salt untuk anonymisasi suara (SHA-256).
+   # JANGAN diubah setelah pemilihan berjalan!
    # Generate dengan: openssl rand -hex 32
    VOTE_SECRET_SALT="paste-hasil-openssl-rand-hex-32-yang-berbeda-disini"
 
+   # Password awal Super Admin.
+   # Hanya digunakan saat akun admin belum ada.
+   INITIAL_ADMIN_PASSWORD="ganti-dengan-password-awal-super-admin-yang-kuat"
+
    # ----- Cookie -----
-   # Set "false" jika akses via HTTP (tanpa HTTPS)
+
+   # Set "false" jika akses melalui HTTP.
+   # Untuk HTTPS production gunakan "true".
    COOKIE_SECURE="false"
 
    # ----- Database PostgreSQL -----
+
    POSTGRES_USER="votesync"
    POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
    POSTGRES_DB="votesync"
 
    # ----- Aplikasi -----
+
    APP_PORT="3000"
    ```
 
 4. **Setup Database**
-   Pastikan PostgreSQL sudah berjalan, lalu sinkronkan skema database:
+   Pastikan PostgreSQL sudah berjalan, kemudian sinkronkan skema:
    ```bash
    npx prisma db push
    ```
 
 5. **Inisialisasi Akun Admin**
-   Buat peran dan akun Super Admin default:
+   Jalankan seed:
    ```bash
    node prisma/seed.js
    ```
-   *Login: **Username** `admin` / **Password** sesuai nilai `INITIAL_ADMIN_PASSWORD` saat bootstrap*
+   Pada instalasi baru, akun Super Admin dibuat dengan:
+   - **Username**: `admin`
+   - **Password**: nilai `INITIAL_ADMIN_PASSWORD`
+
+   > Jika akun admin sudah ada, seed tidak mengganti password yang sudah ada.
 
 6. **Jalankan Aplikasi**
    ```bash
    npm run dev
    ```
-   Akses aplikasi di [http://localhost:3000](http://localhost:3000).
+   Akses: [http://localhost:3000](http://localhost:3000)
 
 ### B. Deployment ke VPS (Production, Tanpa Docker)
 
 1. **Persiapan Server**
-   Pastikan **Node.js v20+** dan PostgreSQL sudah terinstall di server VPS.
+   Pastikan server memiliki:
+   - Node.js v20+
+   - PostgreSQL
 
 2. **Environment Variables**
-   Buat file `.env` di server. Sesuaikan dengan kredensial database dan akses HTTP/HTTPS Anda:
-
+   Buat file `.env`:
    ```env
    # ----- Keamanan -----
 
-   # Generate dengan: openssl rand -hex 32
    JWT_SECRET_KEY="paste-hasil-openssl-rand-hex-32-disini"
 
-   # Salt untuk anonymisasi suara (SHA-256). JANGAN diubah setelah pemilihan berjalan!
-   # Generate dengan: openssl rand -hex 32
+   # JANGAN diubah setelah pemilihan berjalan!
    VOTE_SECRET_SALT="paste-hasil-openssl-rand-hex-32-yang-berbeda-disini"
 
+   # Password awal Super Admin
+   INITIAL_ADMIN_PASSWORD="ganti-dengan-password-awal-super-admin-yang-kuat"
+
    # ----- Cookie -----
-   # Set "false" jika akses via HTTP (tanpa HTTPS)
+
    COOKIE_SECURE="false"
 
    # ----- Database PostgreSQL -----
+
    POSTGRES_USER="votesync"
    POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
    POSTGRES_DB="votesync"
 
    # ----- Aplikasi -----
+
    APP_PORT="3000"
    ```
 
 3. **Install, Migrasi, dan Seed**
    ```bash
-   # Install dependencies
    npm install
 
-   # Sinkronkan skema database ke PostgreSQL
    npx prisma db push
 
-   # Buat akun Super Admin default (hanya perlu dijalankan sekali)
    node prisma/seed.js
 
-   # Build aplikasi untuk production
    npm run build
    ```
 
@@ -158,7 +177,7 @@ Aplikasi ini dibangun menggunakan:
    npm start
    ```
 
-   **Menggunakan PM2 (Rekomendasi agar otomatis restart):**
+   **Menggunakan PM2:**
    ```bash
    npm install -g pm2
    pm2 start npm --name "votesync" -- start
@@ -168,196 +187,260 @@ Aplikasi ini dibangun menggunakan:
 
 ### C. Deployment Menggunakan Docker
 
-Metode ini menjalankan aplikasi VoteSync (Next.js) dan database PostgreSQL secara terisolasi menggunakan Docker Compose. Seluruh konfigurasi sensitif dikelola melalui **satu file `.env`** — tidak ada kredensial yang tertanam langsung di dalam `docker-compose.yml`.
+Metode ini menjalankan aplikasi VoteSync dan PostgreSQL menggunakan Docker Compose. Konfigurasi sensitif disimpan melalui file `.env`.
 
 1. **Prasyarat**
-   Pastikan Docker dan Docker Compose plugin sudah terinstal di server/VM Anda:
+   Pastikan Docker dan Docker Compose plugin sudah terinstal:
    ```bash
    docker --version
    docker compose version
    ```
 
-2. **Konfigurasi File `.env`**
-   Salin template konfigurasi dan isi nilainya:
+2. **Konfigurasi `.env`**
    ```bash
    cp env.example .env
    ```
-   Kemudian edit file `.env` dan sesuaikan semua nilai berikut:
-
+   Edit `.env`:
    ```env
    # ----- Keamanan -----
 
    # Generate dengan: openssl rand -hex 32
    JWT_SECRET_KEY="paste-hasil-openssl-rand-hex-32-disini"
 
-   # Salt untuk anonymisasi suara (SHA-256). JANGAN diubah setelah pemilihan berjalan!
    # Generate dengan: openssl rand -hex 32
+   # JANGAN diubah setelah pemilihan berjalan!
    VOTE_SECRET_SALT="paste-hasil-openssl-rand-hex-32-yang-berbeda-disini"
 
+   # Password awal Super Admin.
+   INITIAL_ADMIN_PASSWORD="ganti-dengan-password-awal-super-admin-yang-kuat"
+
    # ----- Cookie -----
-   # Set "false" jika akses via HTTP (tanpa HTTPS)
+
    COOKIE_SECURE="false"
 
    # ----- Database PostgreSQL -----
+
    POSTGRES_USER="votesync"
    POSTGRES_PASSWORD="ganti-dengan-password-kuat-anda"
    POSTGRES_DB="votesync"
 
    # ----- Aplikasi -----
+
    APP_PORT="3000"
    ```
 
-   > 💡 **Generate secret key yang kuat** — jalankan perintah berikut **dua kali** (hasilnya harus berbeda untuk `JWT_SECRET_KEY` dan `VOTE_SECRET_SALT`):
+   > 💡 Generate secret dengan perintah berikut. Jalankan **dua kali** dan gunakan hasil yang berbeda untuk `JWT_SECRET_KEY` dan `VOTE_SECRET_SALT`:
    > ```bash
    > openssl rand -hex 32
    > ```
 
-   > ⚠️ **Penting**: `VOTE_SECRET_SALT` digunakan untuk mengamankan anonimitas data suara. **Jangan pernah mengubah nilai ini** setelah pemilihan berjalan, karena sistem tidak akan bisa membaca suara yang sudah tercatat sebelumnya.
+   > ⚠️ **Penting**: Jangan mengubah `VOTE_SECRET_SALT` setelah pemilihan berjalan karena nilai tersebut digunakan dalam proses anonimisasi suara.
 
-3. **(Opsional) Reset Bersih dari Awal**
-   Jika sebelumnya sudah pernah menjalankan container/volume lama dan ingin memulai ulang dari nol:
-   ```bash
-   docker compose down -v
-   docker rmi postgres:16-alpine 2>/dev/null
-   docker rmi $(docker images 'votesync*' -q) 2>/dev/null
-   docker builder prune -f
-   ```
-
-4. **Build Image dan Jalankan Container**
-   Jalankan perintah ini di dalam direktori proyek. Docker akan otomatis men-download PostgreSQL, mem-build image aplikasi Next.js, dan menyalakan keduanya secara bersamaan:
+3. **Build Image dan Jalankan Container**
+   Jalankan dari direktori proyek:
    ```bash
    docker compose up -d --build
    ```
-   > ⚠️ Proses build pertama kali memakan waktu beberapa menit jika RAM VM terbatas. Swap akan digunakan secara otomatis. Harap bersabar.
 
-5. **Pastikan Container Berjalan**
-   Periksa status container setelah build selesai:
+4. **Pastikan Container Berjalan**
    ```bash
    docker compose ps
    ```
-   *Pastikan `votesync-app` dan `votesync-db` berstatus **Up**.*
+   *Pastikan `votesync-app` dan `votesync-db` berjalan dengan baik.*
 
-6. **Inisialisasi Tabel Database + Akun Admin (Satu Perintah)**
-   Jalankan perintah berikut untuk membuat seluruh tabel database sekaligus membuat akun Super Admin default secara otomatis:
+5. **Inisialisasi Database dan Akun Admin**
+   Jalankan:
    ```bash
    docker compose --profile migrate run --rm migrate
    ```
-   *Output yang sukses:*
-   ```text
-   Prisma schema loaded from prisma/schema.prisma
-   🚀 Your database is now in sync with your Prisma schema.
-   Seeding database...
-   Role Super Admin verified/created.
-   Admin user 'admin' verified/created; password is supplied through `INITIAL_ADMIN_PASSWORD` during initial bootstrap
-   ```
-   > Perintah ini menggunakan service `migrate` yang telah dikonfigurasi di `docker-compose.yml` dengan full `node_modules` (stage builder), sehingga kompatibel penuh dengan Prisma 7.
+   Perintah tersebut akan:
+   - menjalankan `prisma db push`;
+   - membuat role Super Admin jika belum ada;
+   - membuat akun admin jika belum ada;
+   - menggunakan `INITIAL_ADMIN_PASSWORD` sebagai password awal.
 
-7. **Akses Aplikasi**
+   > Jika akun admin sudah ada, password tidak ditimpa oleh seed.
+
+6. **Akses Aplikasi**
    - **Portal Publik**: `http://<IP-SERVER-ANDA>:<APP_PORT>`
    - **Portal Admin**: `http://<IP-SERVER-ANDA>:<APP_PORT>/admin-login`
-   - Login pertama: **Username** `admin` / **Password** sesuai nilai `INITIAL_ADMIN_PASSWORD`
 
-   > 🔑 Gunakan password bootstrap yang kuat dan segera ganti password setelah login pertama.
+   Login pertama:
+   - **Username**: `admin`
+   - **Password**: nilai `INITIAL_ADMIN_PASSWORD`
 
-8. **Perintah Pemeliharaan (Maintenance)**
+   > 🔑 Setelah login pertama, disarankan mengganti password administrator.
+
+7. **Perintah Pemeliharaan**
 
    | Perintah | Fungsi |
    |---|---|
-   | `docker compose logs -f app` | Melihat log aplikasi secara live |
-   | `docker compose logs -f postgres` | Melihat log database secara live |
-   | `docker compose stop` | Menghentikan semua container |
-   | `docker compose start` | Menjalankan kembali container yang berhenti |
-   | `docker compose down` | Menghentikan dan menghapus container (data tetap aman di volume) |
-   | `docker compose up -d --build` | Rebuild dan jalankan ulang (setelah update kode) |
+   | `docker compose logs -f app` | Melihat log aplikasi |
+   | `docker compose logs -f postgres` | Melihat log PostgreSQL |
+   | `docker compose stop` | Menghentikan container |
+   | `docker compose start` | Menjalankan kembali container |
+   | `docker compose down` | Menghapus container tanpa menghapus volume |
+   | `docker compose up -d --build` | Rebuild image dan menjalankan aplikasi |
 
-9. **Backup Data Database**
-   Data database disimpan di Docker Volume (terpisah dari image). Gunakan `pg_dump` untuk backup:
+8. **Backup Database**
+
+   Backup:
    ```bash
-   # Backup data ke file SQL (dengan tanggal otomatis)
    docker exec votesync-db pg_dump -U votesync votesync > votesync-backup-$(date +%Y%m%d).sql
+   ```
 
-   # Restore data dari file SQL
+   Restore:
+   ```bash
    cat votesync-backup-YYYYMMDD.sql | docker exec -i votesync-db psql -U votesync -d votesync
    ```
 
-10. **Menyimpan Image ke File `.tar` (Portabilitas / Offline Deploy)**
+9. **Menyimpan Image Docker**
+
+   Untuk mengetahui nama image aplikasi yang digunakan:
+   ```bash
+   docker image ls
+   ```
+
+   Simpan image aplikasi:
+   ```bash
+   docker save votesync-pgsql-app -o votesync-app.tar
+   ```
+
+   Simpan image PostgreSQL:
+   ```bash
+   docker save postgres:16-alpine -o postgres.tar
+   ```
+
+   Load di server lain:
+   ```bash
+   docker load -i votesync-app.tar
+   docker load -i postgres.tar
+   ```
+
+   > ⚠️ File `.tar` hanya menyimpan **image**, bukan data PostgreSQL. Backup database tetap harus dilakukan secara terpisah menggunakan `pg_dump`.
+
+10. **Reset Bersih dari Awal**
+
+    > ⚠️ **PERINGATAN**: Perintah berikut menghapus volume database dan data pemilihan.
+
     ```bash
-    # Simpan image aplikasi
-    docker save votesync-votesync-app -o votesync-app.tar
-
-    # Simpan image PostgreSQL
-    docker save postgres:16-alpine -o postgres.tar
-
-    # Load image di server lain (tidak perlu koneksi internet)
-    docker load -i votesync-app.tar
-    docker load -i postgres.tar
+    docker compose down -v
+    docker rmi postgres:16-alpine 2>/dev/null
+    docker rmi $(docker images 'votesync*' -q) 2>/dev/null
+    docker builder prune -f
     ```
-    > ⚠️ File `.tar` hanya menyimpan **image** (blueprint aplikasi), **bukan data database**. Selalu backup data secara terpisah menggunakan `pg_dump` (lihat langkah 9).
 
 ### D. Deployment Menggunakan Portainer (Via Git Repository)
 
-Jika server/VPS Anda menggunakan **Portainer**, cara terbaik dan paling direkomendasikan adalah menggunakan metode **Repository (Git)** yang terhubung langsung dengan repositori GitHub: `https://github.com/yok2-debug/VoteSync-pgsql`.
+Jika server menggunakan Portainer, deployment dapat dilakukan melalui repository GitHub.
 
 1. **Buka Portainer**
-   - Masuk ke dashboard Portainer Anda.
-   - Pilih environment Anda (misal: **local**).
-   - Di menu sebelah kiri, pilih **Stacks** -> klik tombol **+ Add stack**.
+   - Masuk ke Portainer.
+   - Pilih environment.
+   - Pilih **Stacks**.
+   - Klik **+ Add stack**.
 
-2. **Pilih Metode Repository**
-   - **Name**: Masukkan nama stack, contoh: `votesync`.
-   - **Build method**: Pilih **Repository**.
+2. **Pilih Repository**
+   - **Name**: `votesync`
+   - **Build method**: Repository
    - **Repository URL**: `https://github.com/yok2-debug/VoteSync-pgsql`
    - **Repository reference**: `refs/heads/main`
    - **Compose path**: `portainer-docker-compose.yml`
-   - *(Opsional)* **Automatic updates**: Aktifkan **Polling** atau **Webhook** jika ingin stack otomatis update/rebuild
 
-3. **Konfigurasi Environment Variables di Portainer**
-   Gulir ke bawah ke bagian **Environment variables**.
-   Klik **Advanced mode** lalu tempel variabel-variabel berikut (sesuaikan nilainya):
-
+3. **Environment Variables**
+   Masukkan:
    ```env
    POSTGRES_USER=votesync
    POSTGRES_PASSWORD=ganti-dengan-password-kuat-anda
    POSTGRES_DB=votesync
+
    JWT_SECRET_KEY=isi-dengan-hasil-openssl-rand-hex-32
    VOTE_SECRET_SALT=isi-dengan-hasil-openssl-rand-hex-32-yang-berbeda
+   INITIAL_ADMIN_PASSWORD=ganti-dengan-password-awal-super-admin-yang-kuat
+
    COOKIE_SECURE=false
    APP_PORT=3000
    ```
 
-   > 💡 Gunakan `openssl rand -hex 32` di terminal untuk menghasilkan string acak aman untuk `JWT_SECRET_KEY` dan `VOTE_SECRET_SALT`.
+   > 💡 Gunakan nilai yang berbeda untuk `JWT_SECRET_KEY` dan `VOTE_SECRET_SALT`.
 
 4. **Deploy Stack**
-   - Klik tombol **Deploy the stack**.
-   - Portainer akan otomatis men-clone repo GitHub Anda, mem-build image aplikasi, dan menjalankan container.
+   Klik **Deploy the stack**.
 
-5. **Inisialisasi Tabel Database + Akun Admin Default**
-   Setelah stack berstatus *running*, inisialisasi tabel dan akun admin dapat dilakukan via Portainer:
-   - Masuk ke menu **Containers** di Portainer.
-   - Klik ikon **Console** (`>_`) pada baris container `votesync-app`.
-   - Gunakan command `/bin/sh` lalu klik **Connect**.
-   - Jalankan perintah berikut:
-     ```bash
-     npx prisma db push && node prisma/seed.js
-     ```
-   - Akun Super Admin dibuat hanya saat belum ada akun `admin`. Password awal diambil dari `INITIAL_ADMIN_PASSWORD`.
+   Portainer akan mengambil repository, membangun image aplikasi, dan menjalankan service yang didefinisikan dalam `portainer-docker-compose.yml`.
+
+5. **Inisialisasi Database dan Admin**
+   Setelah stack berjalan, buka **Console** pada container `votesync-app`.
+
+   Jalankan:
+   ```bash
+   npx prisma db push && node prisma/seed.js
+   ```
+
+   Pada instalasi baru, akun:
+   - **Username**: `admin`
+   - **Password**: nilai `INITIAL_ADMIN_PASSWORD`
+
+   > Jika akun admin sudah ada, password tidak akan ditimpa.
 
 ---
 
 ## 🔑 Akun Default (Seed)
 
-Jika menjalankan seed database pada instalasi baru:
-- Akun `admin` hanya dibuat jika belum ada.
+Pada instalasi database baru, seed membuat role dan akun Super Admin:
+
 - **Username**: `admin`
-- **Password**: nilai `INITIAL_ADMIN_PASSWORD` yang Anda tentukan saat bootstrap.
-- Password admin yang sudah ada **tidak ditimpa oleh seed**.
+- **Password**: nilai `INITIAL_ADMIN_PASSWORD`
 
-*(Gunakan password bootstrap yang kuat dan ubah password tersebut setelah login pertama di environment produksi.)*
+> Password admin disimpan menggunakan bcrypt. Seed tidak mengganti password akun admin yang sudah ada.
 
-## 📝 Catatan Keamanan
+---
 
-- **Password Pemilih**: Aplikasi ini dikonfigurasi untuk menyimpan password pemilih dalam format **plain text**. Hal ini disengaja untuk memudahkan distribusi kredensial (cetak kartu fisik) kepada pemilih dalam lingkungan tertutup. Pastikan database Anda terlindungi dengan baik.
-- **Password Admin**: Password administrator ditentukan melalui `INITIAL_ADMIN_PASSWORD` saat bootstrap dan disimpan menggunakan bcrypt.
-- **Anonimitas Suara**: Identitas pemilih dalam tabel suara disamarkan menggunakan **SHA-256 + VOTE_SECRET_SALT**, sehingga tidak ada yang bisa melacak siapa memilih siapa, bahkan dari dalam database.
-- **Validasi Voting**: Sistem memvalidasi status pemilihan (aktif/tidak aktif), rentang waktu (`startDate`/`endDate`), dan hak kategori pemilih sebelum suara diterima — voting tidak bisa dimanipulasi langsung melalui API.
-- **Hasil Real-time**: Data perolehan suara hanya dipublikasikan jika admin mengaktifkan fitur *Real Count*, atau setelah waktu `endDate` pemilihan terlampaui.
+## 🔐 Catatan Keamanan
+
+### Password Pemilih
+
+Password pemilih tidak disimpan sebagai plaintext di database.
+
+Pada pembuatan/import/reset pemilih:
+- sistem menghasilkan password sementara yang dapat dibaca;
+- password tersebut dapat ditampilkan untuk kebutuhan pencetakan/distribusi;
+- database hanya menyimpan bcrypt hash;
+- password plaintext tidak disimpan kembali oleh aplikasi.
+
+> Jika password yang sudah dibagikan hilang, buat/reset password baru dan distribusikan kembali kepada pemilih.
+
+### Password Admin
+
+Password administrator disimpan menggunakan bcrypt.
+
+`INITIAL_ADMIN_PASSWORD` hanya digunakan sebagai password bootstrap ketika akun admin belum ada. Seed tidak mengganti password administrator yang sudah ada.
+
+### Anonimitas Suara
+
+Identitas pemilih dalam data suara dianonimkan menggunakan SHA-256 + `VOTE_SECRET_SALT`.
+
+> ⚠️ Jaga kerahasiaan `VOTE_SECRET_SALT` dan jangan mengubahnya setelah pemilihan berjalan.
+
+### Validasi Voting
+
+Sistem memvalidasi:
+- status pemilihan;
+- waktu mulai dan berakhir;
+- hak kategori pemilih;
+- status pemilih;
+- satu suara per pemilih pada setiap pemilihan.
+
+Operasi penting terkait pemilihan menggunakan mekanisme locking PostgreSQL untuk mencegah konflik perubahan data selama proses voting.
+
+### Real Count
+
+Hasil suara tidak dipublikasikan kepada publik selama pemilihan masih berlangsung.
+
+Halaman Real Count publik hanya menampilkan hasil pemilihan yang telah mencapai atau melewati `endDate`.
+
+Pada sisi admin, pengguna yang memiliki permission `real_count` dapat memantau seluruh pemilihan melalui halaman Real Count dan memilih satu pemilihan sebagai pemilihan utama melalui Pengaturan Real Count.
+
+### Reset System
+
+Fitur Reset System hanya tersedia untuk Super Admin dan dapat menghapus atau mengatur ulang data pemilihan sesuai fungsi yang tersedia. Gunakan fitur ini dengan hati-hati dan pastikan backup tersedia sebelum melakukan reset.
