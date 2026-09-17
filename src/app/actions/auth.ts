@@ -42,11 +42,10 @@ export async function loginAdmin(prevState: any, formData: FormData) {
         const user: AdminUser = {
             id: userData.id,
             username: userData.username,
-            password: userData.password,
             roleId: userData.roleId || '',
         };
 
-        const isValid = await verifyPassword(password, user.password || '');
+        const isValid = await verifyPassword(password, userData.password || '');
         if (!isValid) {
             return { success: false, message: 'Kredensial tidak valid.' };
         }

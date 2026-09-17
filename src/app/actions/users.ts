@@ -9,7 +9,13 @@ export async function getAdminUsers(): Promise<{ success: boolean; data?: AdminU
     try {
         await verifyAdminSession('users');
 
-        const users = await prisma.appUser.findMany();
+        const users = await prisma.appUser.findMany({
+            select: {
+                id: true,
+                username: true,
+                roleId: true,
+            },
+        });
 
         if (!users || users.length === 0) {
             return { success: true, data: [] };

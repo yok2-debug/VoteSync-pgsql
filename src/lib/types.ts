@@ -69,7 +69,6 @@ export interface Role {
 export interface AdminUser {
   id: string;
   username: string;
-  password?: string;
   roleId: string;
 }
 

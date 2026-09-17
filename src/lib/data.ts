@@ -56,16 +56,21 @@ export async function initializeDefaultAdmin(): Promise<void> {
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
   try {
-    const users = await prisma.appUser.findMany();
+    const users = await prisma.appUser.findMany({
+      select: {
+        id: true,
+        username: true,
+        roleId: true,
+      },
+    });
 
     if (!users) {
       return [];
     }
 
-    return users.map((u: { id: string; username: string; password: string; roleId: string | null }) => ({
+    return users.map((u) => ({
       id: u.id,
       username: u.username,
-      password: u.password,
       roleId: u.roleId || '',
     }));
   } catch (error) {
