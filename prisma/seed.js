@@ -17,7 +17,6 @@ const ALL_PERMISSIONS = [
   'categories',
   'recapitulation',
   'real_count',
-  'settings',
   'users',
   'committees',
 ];

@@ -81,6 +81,7 @@ export function AdminSidebar({ session }: { session: AdminSessionPayload | null 
     { href: '/admin/committees', icon: <Users />, label: 'Panitia Pemilihan', permission: 'committees' },
     { href: '/admin/recapitulation', icon: <FileText />, label: 'Rekapitulasi', permission: 'recapitulation' },
     { href: '/admin/real-count', icon: <TrendingUp />, label: 'Real Count', permission: 'real_count' },
+    { href: '/admin/setting-realcount', icon: <Settings />, label: 'Pengaturan Real Count', permission: 'real_count' },
   ];
 
   const userManagementItems = [
@@ -88,7 +89,7 @@ export function AdminSidebar({ session }: { session: AdminSessionPayload | null 
     { href: '/admin/users/roles', icon: <Shield />, label: 'Peran', permission: 'users' },
   ]
 
-  const settingsItem = { href: '/admin/settings', icon: <Settings />, label: 'Pengaturan', permission: 'settings' };
+  const settingsItem = { href: '/admin/reset', icon: <Settings />, label: 'Reset System' };
 
   return (
     <Sidebar>
@@ -132,7 +133,7 @@ export function AdminSidebar({ session }: { session: AdminSessionPayload | null 
               </SidebarGroup>
             )}
 
-            {hasPermission(settingsItem.permission) && (
+            {session?.roleId === 'role_super_admin' && (
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => router.push(settingsItem.href)}

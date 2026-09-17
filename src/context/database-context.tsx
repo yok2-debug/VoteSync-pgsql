@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import type { Election, Voter, Category, Role } from '@/lib/types';
-import { initializeDefaultAdmin } from '@/lib/data';
 
 interface DatabaseContextType {
   elections: Election[];
@@ -31,9 +30,6 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setIsLoading(true);
-
-    // Initialize default admin on first load
-    initializeDefaultAdmin();
 
     // With Supabase, we don't need real-time listeners for client-side
     // Data is fetched via Server Actions when needed

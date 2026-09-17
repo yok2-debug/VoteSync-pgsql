@@ -9,7 +9,6 @@ export interface Election {
   committee?: CommitteeMember[];
   votes?: Record<string, string>; // { [voterId]: candidateId }
   results?: Record<string, number>; // { [candidateId]: voteCount }
-  showInRealCount?: boolean;
   isMainInRealCount?: boolean;
   useWitnesses?: boolean;
 }
@@ -59,7 +58,7 @@ export interface Category {
   allowedElections?: string[];
 }
 
-export type Permission = 'dashboard' | 'elections' | 'candidates' | 'voters' | 'categories' | 'recapitulation' | 'real_count' | 'settings' | 'users' | 'committees';
+export type Permission = 'dashboard' | 'elections' | 'candidates' | 'voters' | 'categories' | 'recapitulation' | 'real_count' | 'users' | 'committees';
 
 export interface Role {
   id: string;

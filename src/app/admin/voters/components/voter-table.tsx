@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ResetPasswordDialog } from './reset-password-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { VoterImportDialog } from './voter-import-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkUpdateCategoryDialog } from './bulk-update-category-dialog';
@@ -126,17 +126,16 @@ export function VoterTable({
 
   const handleExportTemplate = () => {
     setIsExporting(true);
-    const csvContent = 'id,nik,name,birthPlace,birthDate,gender,address,category,password\n';
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    if (link.href) {
-      URL.revokeObjectURL(link.href);
-    }
-    link.href = URL.createObjectURL(blob);
-    link.download = 'voter_template.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ['nik', 'name', 'birthPlace', 'birthDate', 'gender', 'address', 'category'],
+    ]);
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pemilih');
+
+    XLSX.writeFile(workbook, 'voter_template.xlsx');
+
     toast({ title: "Template berhasil diekspor." });
     setIsExporting(false);
   };
@@ -145,28 +144,53 @@ export function VoterTable({
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+
     if (file) {
       setIsImporting(true);
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          setImportedData(results.data.filter(row => Object.values(row as object).some(val => val !== '' && val !== null)));
-          setShowImportDialog(true);
-          setIsImporting(false);
-        },
-        error: (error: any) => {
-          toast({
-            variant: 'destructive',
-            title: 'Error mem-parsing CSV',
-            description: error.message,
-          });
-          setIsImporting(false);
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, {
+          type: 'array',
+          cellDates: false,
+        });
+
+        const firstSheetName = workbook.SheetNames[0];
+
+        if (!firstSheetName) {
+          throw new Error('File XLSX tidak memiliki worksheet.');
         }
-      });
+
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        const data = XLSX.utils.sheet_to_json(worksheet, {
+          defval: '',
+          raw: false,
+        });
+
+        const filteredData = data.filter(row =>
+          Object.values(row as object).some(
+            val => val !== '' && val !== null
+          )
+        );
+
+        setImportedData(filteredData);
+        setShowImportDialog(true);
+      } catch (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Error membaca file XLSX',
+          description: error instanceof Error
+            ? error.message
+            : 'File XLSX tidak dapat dibaca.',
+        });
+      } finally {
+        setIsImporting(false);
+      }
     }
+
     if (event.target) {
       event.target.value = '';
     }
@@ -475,7 +499,7 @@ export function VoterTable({
         ref={fileInputRef}
         onChange={handleFileChange}
         className="hidden"
-        accept=".csv"
+        accept=".xlsx"
       />
       <div className="flex justify-between items-center gap-2 flex-wrap">
         <form className="flex gap-2">
@@ -520,7 +544,7 @@ export function VoterTable({
           </Button>
           <Button variant="outline" onClick={handleImportClick} disabled={isImporting}>
             {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-            Impor CSV
+            Impor XLSX
           </Button>
           <Button onClick={handleAdd}>
             <PlusCircle className="mr-2 h-4 w-4" />
@@ -659,10 +683,13 @@ export function VoterTable({
 	onSuccess={async (data) => {
 	  await refreshVoters();
 
-	  if (data?.voterId && data.password) {
+	  const voterId = data?.voterId;
+	  const password = data?.password;
+
+	  if (voterId && password) {
 	    setTemporaryPasswords(prev => ({
 	      ...prev,
-	      [data.voterId]: data.password,
+	      [voterId]: password,
 	    }));
 	  }
 	}}
@@ -673,7 +700,6 @@ export function VoterTable({
         onOpenChange={setShowImportDialog}
         data={importedData}
         categories={categories}
-        existingVoters={voters}
         onSuccess={async (data) => {
           await refreshVoters();
 

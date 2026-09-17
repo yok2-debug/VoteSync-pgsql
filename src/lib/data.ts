@@ -18,7 +18,6 @@ export async function initializeDefaultAdmin(): Promise<void> {
       'categories',
       'recapitulation',
       'real_count',
-      'settings',
       'users',
       'committees',
     ];

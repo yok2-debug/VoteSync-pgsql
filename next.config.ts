@@ -3,7 +3,18 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   /* config options here */
   output: process.env.VERCEL ? undefined : 'standalone',
-  serverExternalPackages: ['pino', 'thread-stream'],
+  serverExternalPackages: [
+    'pino',
+    'thread-stream',
+    '@prisma/adapter-pg',
+  ],
+  outputFileTracingIncludes: {
+    '/*': [
+      './node_modules/@prisma/adapter-pg/**/*',
+      './node_modules/@prisma/driver-adapter-utils/**/*',
+      './node_modules/@prisma/debug/**/*',
+    ],
+  },
   images: {
     remotePatterns: [
       {

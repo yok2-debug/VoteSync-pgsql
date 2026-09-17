@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { handleApiError, parseJsonBody, verifyAdminSession } from '../../lib/api-helpers';
+import {
+  acquireElectionOperationLock,
+  VotingInProgressError,
+} from '@/lib/election-lock';
 
 const resetActionSchema = z.object({
   action: z.enum([
@@ -13,7 +17,15 @@ const resetActionSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    await verifyAdminSession('settings');
+    const session = await verifyAdminSession();
+
+    if (session.roleId !== 'role_super_admin') {
+      return NextResponse.json(
+        { message: 'Akses ditolak.' },
+        { status: 403 }
+      );
+    }
+
     const result = resetActionSchema.safeParse(await parseJsonBody(request));
 
     if (!result.success) {
@@ -25,39 +37,53 @@ export async function POST(request: Request) {
 
     const { action } = result.data;
 
-    switch (action) {
-      case 'reset_votes_and_status':
-        await resetVotesAndStatus();
-        break;
-      case 'delete_all_voters':
-        await prisma.voter.deleteMany();
-        break;
-      case 'reset_all_elections':
-        // Delete all votes first
-        await prisma.vote.deleteMany();
-        // Delete all candidates
-        await prisma.candidate.deleteMany();
-        // Delete all elections
-        await prisma.election.deleteMany();
-        // Reset hasVoted for remaining voters
-        await resetVotesAndStatus();
-        break;
-      default:
-        return NextResponse.json({ message: 'Aksi tidak valid' }, { status: 400 });
-    }
+    await prisma.$transaction(async (tx) => {
+      await acquireElectionOperationLock(tx, 'exclusive');
+
+      const activeElection = await tx.election.findFirst({
+        where: { status: 'active' },
+        select: { id: true, name: true },
+      });
+
+      if (activeElection) {
+        throw new VotingInProgressError();
+      }
+
+      switch (action) {
+        case 'reset_votes_and_status':
+          await tx.voter.updateMany({
+            data: { hasVoted: {} },
+          });
+          await tx.vote.deleteMany();
+          break;
+
+        case 'delete_all_voters':
+          await tx.voter.deleteMany();
+          break;
+
+        case 'reset_all_elections':
+          await tx.vote.deleteMany();
+          await tx.candidate.deleteMany();
+          await tx.election.deleteMany();
+          await tx.voter.updateMany({
+            data: { hasVoted: {} },
+          });
+          break;
+
+        default:
+          throw new Error('INVALID_RESET_ACTION');
+      }
+    });
 
     return NextResponse.json({ message: `Aksi '${action}' berhasil diselesaikan` }, { status: 200 });
   } catch (error) {
+    if (error instanceof VotingInProgressError) {
+      return NextResponse.json(
+        { message: 'Reset tidak dapat dilakukan selama voting berlangsung.' },
+        { status: 409 }
+      );
+    }
+
     return handleApiError(error);
   }
-}
-
-async function resetVotesAndStatus() {
-  // 1. Reset hasVoted status for all voters
-  await prisma.voter.updateMany({
-    data: { hasVoted: {} }
-  });
-
-  // 2. Delete all votes (voteReceipts equivalent)
-  await prisma.vote.deleteMany();
 }

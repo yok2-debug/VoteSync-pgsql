@@ -31,12 +31,23 @@ const committeeSchema = z.object({
 
 const committeeUpdateSchema = committeeSchema.partial();
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
 // Committee CRUD
 export async function POST(request: Request) {
     try {
         await verifyAdminSession('committees');
 
         const body = await parseJsonBody(request);
+
+        if (!isRecord(body)) {
+            return NextResponse.json(
+                { message: 'Data tidak valid.' },
+                { status: 400 }
+            );
+        }
+
         const { action, ...data } = body;
 
         // Member operations
@@ -90,6 +101,14 @@ export async function PUT(request: Request) {
         await verifyAdminSession('committees');
 
         const body = await parseJsonBody(request);
+
+        if (!isRecord(body)) {
+            return NextResponse.json(
+                { message: 'Data tidak valid.' },
+                { status: 400 }
+            );
+        }
+
         const { action, committeeId, memberId, data } = body;
 
         // Member update
@@ -155,6 +174,14 @@ export async function DELETE(request: Request) {
         await verifyAdminSession('committees');
 
         const body = await parseJsonBody(request);
+
+        if (!isRecord(body)) {
+            return NextResponse.json(
+                { message: 'Data tidak valid.' },
+                { status: 400 }
+            );
+        }
+
         const { action, committeeId, memberId } = body;
 
         // Member delete

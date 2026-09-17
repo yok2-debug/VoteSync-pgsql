@@ -8,6 +8,8 @@ import { logger } from '@/lib/logger';
 import { hashPassword, generateReadablePassword } from '@/lib/password';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { randomInt } from 'node:crypto';
+import { acquireElectionOperationLock } from '@/lib/election-lock';
 
 const voterIdSchema = z.string().trim().min(1);
 
@@ -39,10 +41,8 @@ const voterPasswordResetSchema = z.object({
 });
 
 const importVoterSchema = z.object({
-    id: z.string().trim().min(1),
     name: z.string().optional(),
     category: z.string().optional(),
-    password: z.string().optional(),
     nik: z.string().optional(),
     birthPlace: z.string().optional(),
     birthDate: z.string().optional(),
@@ -51,6 +51,19 @@ const importVoterSchema = z.object({
 });
 
 const importVotersSchema = z.array(importVoterSchema).min(1);
+
+function generateImportVoterId(): string {
+    const chars = 'ABCDEFGHJKMNPQRTUVWXY';
+
+    let letters = '';
+    for (let i = 0; i < 2; i++) {
+        letters += chars[randomInt(chars.length)];
+    }
+
+    const number = randomInt(100000, 1000000);
+
+    return `${letters}-${number}`;
+}
 
 export async function getVoters(): Promise<{ success: boolean; data?: Voter[]; message?: string }> {
     try {
@@ -177,26 +190,155 @@ export async function getVoterCountsByCategory(): Promise<{ success: boolean; da
     }
 }
 
-// Public aggregate-only voter counts for the real-count display.
-// This exposes no individual voter data.
-export async function getPublicVoterCountsByCategory(): Promise<{ success: boolean; data?: Record<string, number>; message?: string }> {
+// Admin voter counts for the Real Count display.
+// Requires the real_count permission and includes all voter categories.
+export async function getAdminVoterCountsByCategory(): Promise<{
+    success: boolean;
+    data?: Record<string, number>;
+    message?: string;
+}> {
     try {
-        const voters = await prisma.voter.findMany({
-            select: { categoryId: true }
+        await verifyAdminSession('real_count');
+
+        const voterCounts = await prisma.voter.groupBy({
+            by: ['categoryId'],
+            _count: {
+                _all: true,
+            },
         });
 
         const counts: Record<string, number> = {};
 
-        voters.forEach((v: { categoryId: string | null }) => {
-            if (v.categoryId) {
-                counts[v.categoryId] = (counts[v.categoryId] || 0) + 1;
+        voterCounts.forEach((row) => {
+            if (row.categoryId) {
+                counts[row.categoryId] = row._count._all;
             }
         });
 
         return { success: true, data: counts };
     } catch (error) {
-        logger.error({ err: error }, 'Error counting public voter statistics');
-        return { success: false, message: 'Gagal menghitung statistik pemilih.' };
+        logger.error({ err: error }, 'Error counting admin voter statistics');
+        return {
+            success: false,
+            message: 'Gagal menghitung statistik pemilih.',
+        };
+    }
+}
+
+// Public voter counts for the Real Count display.
+// Returns DPT directly per ended election.
+// No individual voter data is exposed.
+export async function getPublicRealCountVoterCountsByElection(): Promise<{
+    success: boolean;
+    data?: Record<string, number>;
+    message?: string;
+}> {
+    try {
+        const now = new Date();
+
+        const elections = await prisma.election.findMany({
+            select: {
+                id: true,
+                endDate: true,
+            },
+        });
+
+        const endedElections = elections.filter((e) => {
+            if (!e.endDate) {
+                return false;
+            }
+
+            return now >= new Date(e.endDate);
+        });
+
+        if (endedElections.length === 0) {
+            return { success: true, data: {} };
+        }
+
+        const endedElectionIds = endedElections.map((e) => e.id);
+
+        const categories = await prisma.category.findMany({
+            where: {
+                allowedElections: {
+                    hasSome: endedElectionIds,
+                },
+            },
+            select: {
+                id: true,
+                allowedElections: true,
+            },
+        });
+
+        const categoryIdsByElection: Record<string, Set<string>> = {};
+
+        for (const election of endedElections) {
+            categoryIdsByElection[election.id] = new Set(
+                categories
+                    .filter((category) =>
+                        category.allowedElections.includes(election.id)
+                    )
+                    .map((category) => category.id)
+            );
+        }
+
+        const allCategoryIds = [
+            ...new Set(categories.map((category) => category.id)),
+        ];
+
+        if (allCategoryIds.length === 0) {
+            return {
+                success: true,
+                data: Object.fromEntries(
+                    endedElectionIds.map((id) => [id, 0])
+                ),
+            };
+        }
+
+        const voterCounts = await prisma.voter.groupBy({
+            by: ['categoryId'],
+            where: {
+                categoryId: {
+                    in: allCategoryIds,
+                },
+            },
+            _count: {
+                _all: true,
+            },
+        });
+
+        const countsByCategory: Record<string, number> = {};
+
+        voterCounts.forEach((row) => {
+            if (row.categoryId) {
+                countsByCategory[row.categoryId] = row._count._all;
+            }
+        });
+
+        const countsByElection: Record<string, number> = {};
+
+        for (const electionId of endedElectionIds) {
+            let total = 0;
+
+            categoryIdsByElection[electionId].forEach((categoryId) => {
+                total += countsByCategory[categoryId] || 0;
+            });
+
+            countsByElection[electionId] = total;
+        }
+
+        return {
+            success: true,
+            data: countsByElection,
+        };
+    } catch (error) {
+        logger.error(
+            { err: error },
+            'Error counting public Real Count voter statistics'
+        );
+        return {
+            success: false,
+            message: 'Gagal menghitung statistik pemilih.',
+        };
     }
 }
 
@@ -265,19 +407,25 @@ export async function createVoter(
 	const plainPassword = validData.password || generateReadablePassword();
 	const hashedPassword = await hashPassword(plainPassword);
 
-        await prisma.voter.create({
-            data: {
-                id: voterId,
-                name: validData.name || '',
-                categoryId: validData.category || null,
-                password: hashedPassword,
-                nik: validData.nik || '',
-                birthPlace: validData.birthPlace || '',
-                birthDate: validData.birthDate || '',
-                gender: validData.gender || null,
-                address: validData.address || '',
-                hasVoted: {},
-            }
+        await prisma.$transaction(async (tx) => {
+            // Assigning a voter to a category changes voting eligibility.
+            // Serialize voter creation against voting and other eligibility changes.
+            await acquireElectionOperationLock(tx, 'exclusive');
+
+            await tx.voter.create({
+                data: {
+                    id: voterId,
+                    name: validData.name || '',
+                    categoryId: validData.category || null,
+                    password: hashedPassword,
+                    nik: validData.nik || '',
+                    birthPlace: validData.birthPlace || '',
+                    birthDate: validData.birthDate || '',
+                    gender: validData.gender || null,
+                    address: validData.address || '',
+                    hasVoted: {},
+                }
+            });
         });
 
         logger.info({ voterId }, 'Voter created');
@@ -286,7 +434,7 @@ export async function createVoter(
             success: true,
             message: 'Pemilih berhasil dibuat',
             data: {
-                voterId: validVoterId,
+                voterId: voterId,
                 password: plainPassword,
             },
         };
@@ -353,10 +501,23 @@ export async function updateVoter(
 	    };
         }
 
-        await prisma.voter.update({
-            where: { id: validVoterId },
-            data: updateData
-        });
+        // Perubahan categoryId memengaruhi hak suara dan harus
+        // diserialisasi terhadap proses voting.
+        if (updateData.categoryId !== undefined) {
+            await prisma.$transaction(async (tx) => {
+                await acquireElectionOperationLock(tx, 'exclusive');
+
+                await tx.voter.update({
+                    where: { id: validVoterId },
+                    data: updateData
+                });
+            });
+        } else {
+            await prisma.voter.update({
+                where: { id: validVoterId },
+                data: updateData
+            });
+        }
 
         logger.info({ voterId: validVoterId }, 'Voter updated');
         revalidatePath('/admin/voters');
@@ -393,8 +554,14 @@ export async function deleteVoters(voterIds: string[]): Promise<{ success: boole
             return { success: false, message: 'Tidak ada ID pemilih yang dipilih' };
         }
 
-        await prisma.voter.deleteMany({
-            where: { id: { in: validVoterIds } }
+        await prisma.$transaction(async (tx) => {
+            // Serialize voter deletion against voting and other
+            // operations that can change voter eligibility.
+            await acquireElectionOperationLock(tx, 'exclusive');
+
+            await tx.voter.deleteMany({
+                where: { id: { in: validVoterIds } }
+            });
         });
 
         logger.info({ admin: session.username, count: validVoterIds.length }, 'Voters deleted');
@@ -432,10 +599,34 @@ export async function bulkUpdateVoterCategory(
         const validVoterIds = categoryUpdateResult.data.voterIds;
         const validCategoryId = categoryUpdateResult.data.newCategoryId;
 
-        await prisma.voter.updateMany({
-            where: { id: { in: validVoterIds } },
-            data: { categoryId: validCategoryId }
+        const updated = await prisma.$transaction(async (tx) => {
+            // Changing voter category changes voting eligibility.
+            // Serialize the validation and update against voting.
+            await acquireElectionOperationLock(tx, 'exclusive');
+
+            const category = await tx.category.findUnique({
+                where: { id: validCategoryId },
+                select: { id: true }
+            });
+
+            if (!category) {
+                return false;
+            }
+
+            await tx.voter.updateMany({
+                where: { id: { in: validVoterIds } },
+                data: { categoryId: validCategoryId }
+            });
+
+            return true;
         });
+
+        if (!updated) {
+            return {
+                success: false,
+                message: 'Kategori tidak ditemukan.'
+            };
+        }
 
         revalidatePath('/admin/voters');
         return { success: true, message: `${validVoterIds.length} pemilih berhasil diperbarui.` };
@@ -539,27 +730,46 @@ export async function resetVotersPasswords(
             };
         }
 
-        const temporaryPasswords: { voterId: string; password: string }[] = [];
+        // Generate and hash all temporary passwords before opening
+        // the database transaction so bcrypt does not hold a DB
+        // transaction open unnecessarily.
+        const passwordResets: {
+            voterId: string;
+            plainPassword: string;
+            hashedPassword: string;
+        }[] = [];
 
         for (const voter of voters) {
             const plainPassword = generateReadablePassword();
             const hashedPassword = await hashPassword(plainPassword);
 
-            await prisma.voter.update({
-                where: { id: voter.id },
-                data: {
-                    password: hashedPassword,
-                    sessionVersion: {
-                        increment: 1,
-                    },
-                },
-            });
-
-            temporaryPasswords.push({
+            passwordResets.push({
                 voterId: voter.id,
-                password: plainPassword,
+                plainPassword,
+                hashedPassword,
             });
         }
+
+        // Apply all password resets atomically. If any update fails,
+        // none of the password changes are committed.
+        await prisma.$transaction(
+            passwordResets.map((reset) =>
+                prisma.voter.update({
+                    where: { id: reset.voterId },
+                    data: {
+                        password: reset.hashedPassword,
+                        sessionVersion: {
+                            increment: 1,
+                        },
+                    },
+                })
+            )
+        );
+
+        const temporaryPasswords = passwordResets.map((reset) => ({
+            voterId: reset.voterId,
+            password: reset.plainPassword,
+        }));
 
         logger.info(
             { count: temporaryPasswords.length },
@@ -628,10 +838,41 @@ export async function importVoters(
         const temporaryPasswords: { voterId: string; password: string }[] = [];
         const errors: string[] = [];
 
+        const generatedIds = new Set<string>();
+
         for (const voterData of validVoters) {
-            const id = voterData.id;
+            let id = '';
+            let attempts = 0;
+
+            while (attempts < 20) {
+                const candidateId = generateImportVoterId();
+
+                if (generatedIds.has(candidateId)) {
+                    attempts++;
+                    continue;
+                }
+
+                const existing = await prisma.voter.findUnique({
+                    where: { id: candidateId },
+                    select: { id: true },
+                });
+
+                if (!existing) {
+                    id = candidateId;
+                    generatedIds.add(candidateId);
+                    break;
+                }
+
+                attempts++;
+            }
+
             if (!id) {
-                errors.push(`Data baris tanpa ID dilewati: ${voterData.name}`);
+                errors.push(`Gagal membuat ID unik untuk ${voterData.name || 'pemilih'}.`);
+                continue;
+            }
+
+            if (!voterData.category) {
+                errors.push(`Kategori untuk ${voterData.name} (ID: ${id}) tidak diisi.`);
                 continue;
             }
 
@@ -643,8 +884,8 @@ export async function importVoters(
                 continue;
             }
 
-            const plainPassword = voterData.password || generateReadablePassword();
-
+            const validCategoryId: string = categoryId;
+            const plainPassword = generateReadablePassword();
             const hashedPassword = await hashPassword(plainPassword);
 
             temporaryPasswords.push({
@@ -653,9 +894,9 @@ export async function importVoters(
             });
 
             votersToInsert.push({
-                id: id,
+                id,
                 name: voterData.name || '',
-                categoryId: categoryId,
+                categoryId: validCategoryId,
                 password: hashedPassword,
                 nik: voterData.nik || '',
                 birthPlace: voterData.birthPlace || '',
@@ -671,23 +912,18 @@ export async function importVoters(
         }
 
         if (votersToInsert.length > 0) {
-            // Prisma upsert for batch - use createMany with skipDuplicates or transaction
-            for (const voter of votersToInsert) {
-                await prisma.voter.upsert({
-                    where: { id: voter.id },
-                    create: voter,
-                    update: {
-                        name: voter.name,
-                        categoryId: voter.categoryId,
-                        password: voter.password,
-                        nik: voter.nik,
-                        birthPlace: voter.birthPlace,
-                        birthDate: voter.birthDate,
-                        gender: voter.gender,
-                        address: voter.address,
-                    }
-                });
-            }
+            // Imported voters are newly created and receive generated IDs.
+            // Keep the complete batch under one exclusive election lock
+            // and one database transaction.
+            await prisma.$transaction(async (tx) => {
+                await acquireElectionOperationLock(tx, 'exclusive');
+
+                for (const voter of votersToInsert) {
+                    await tx.voter.create({
+                        data: voter,
+                    });
+                }
+            });
         }
 
         logger.info({ count: votersToInsert.length }, 'Voters imported');

@@ -12,8 +12,11 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel"
-import { getPublicElections, getPublicCategories } from '@/app/actions/public';
-import { getPublicVoterCountsByCategory } from '@/app/actions/voters';
+import {
+  getPublicRealCountElections,
+  getPublicCategories,
+} from '@/app/actions/public';
+import { getPublicRealCountVoterCountsByElection } from '@/app/actions/voters';
 import type { Election, Category } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,6 +25,7 @@ export default function RealCountPage() {
   const [elections, setElections] = useState<Election[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [voterCounts, setVoterCounts] = useState<Record<string, number>>({});
+  const [publicDptByElection, setPublicDptByElection] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -31,9 +35,9 @@ export default function RealCountPage() {
     const fetchData = async (isInitial = false) => {
       try {
         const [electionsResult, categoriesResult, voterCountsResult] = await Promise.all([
-          getPublicElections(),
+          getPublicRealCountElections(),
           getPublicCategories(),
-          getPublicVoterCountsByCategory()
+          getPublicRealCountVoterCountsByElection()
         ]);
 
         if (isMounted) {
@@ -46,7 +50,7 @@ export default function RealCountPage() {
           }
 
           if (voterCountsResult.success && voterCountsResult.data) {
-            setVoterCounts(voterCountsResult.data);
+            setPublicDptByElection(voterCountsResult.data);
           }
         }
       } catch (error) {
@@ -70,14 +74,16 @@ export default function RealCountPage() {
     };
   }, []);
 
-  const mainElection = useMemo(() =>
-    elections.find(e => e.isMainInRealCount === true && e.showInRealCount === true && e.status === 'active'),
+  const mainElection = useMemo(
+    () => elections.find((e) => e.isMainInRealCount === true),
     [elections]
   );
 
-  const otherElections = useMemo(() =>
-    elections.filter(e => e.id !== mainElection?.id && e.showInRealCount === true && e.status === 'active')
-      .sort((a, b) => a.name.localeCompare(b.name)),
+  const otherElections = useMemo(
+    () =>
+      elections
+        .filter((e) => e.id !== mainElection?.id)
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [elections, mainElection]
   );
 
@@ -99,17 +105,23 @@ export default function RealCountPage() {
 
           {noElectionsToShow ? (
             <div className="col-span-full text-center py-10">
-              <p className="text-muted-foreground">Tidak ada pemilihan yang ditampilkan di Real Count saat ini.</p>
+              <p className="text-muted-foreground">
+                Halaman Real Count dapat dilihat jika pemilihan sudah berakhir.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
               {mainElection && (
-                <div className="lg:col-span-2">
+                <div className={cn(
+                  "order-1 lg:order-2",
+                  otherElections.length === 0 ? "lg:col-span-3" : "lg:col-span-2"
+                )}>
                   <RealCountDisplay
                     key={mainElection.id}
                     election={mainElection}
                     categories={categories}
                     voterCounts={voterCounts}
+                    voterCount={publicDptByElection[mainElection.id] ?? 0}
                     isMain={true}
                   />
                 </div>
@@ -117,7 +129,7 @@ export default function RealCountPage() {
 
               {otherElections.length > 0 && (
                 <div className={cn(
-                  "relative",
+                  "relative order-2 lg:order-1",
                   !mainElection ? "lg:col-span-3" : "lg:col-span-1"
                 )}>
                   <Carousel
@@ -142,6 +154,7 @@ export default function RealCountPage() {
                             election={election}
                             categories={categories}
                             voterCounts={voterCounts}
+                            voterCount={publicDptByElection[election.id] ?? 0}
                             isMain={false}
                           />
                         </CarouselItem>

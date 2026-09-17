@@ -45,10 +45,17 @@ interface RealCountDisplayProps {
   election: Election;
   categories: Category[];
   voterCounts: Record<string, number>;
+  voterCount?: number;
   isMain: boolean;
 }
 
-export function RealCountDisplay({ election, categories, voterCounts, isMain }: RealCountDisplayProps) {
+export function RealCountDisplay({
+  election,
+  categories,
+  voterCounts,
+  voterCount,
+  isMain,
+}: RealCountDisplayProps) {
   const [now, setNow] = useState(new Date());
   const defaultAvatar = PlaceHolderImages.find(p => p.id === 'default-avatar');
 
@@ -64,6 +71,10 @@ export function RealCountDisplay({ election, categories, voterCounts, isMain }: 
   const liveTotalVotes = Object.values(liveResults).reduce((sum, count) => sum + count, 0);
 
   const DPT = useMemo(() => {
+    if (voterCount !== undefined) {
+      return voterCount;
+    }
+
     const allowedCategoryIds = new Set(
       categories.filter(c => c.allowedElections?.includes(election.id)).map(c => c.id)
     );
@@ -74,7 +85,7 @@ export function RealCountDisplay({ election, categories, voterCounts, isMain }: 
       total += voterCounts[catId] || 0;
     });
     return total;
-  }, [voterCounts, categories, election.id]);
+  }, [voterCount, voterCounts, categories, election.id]);
 
   const candidates = useMemo(() =>
     Object.values(election.candidates || {})
@@ -110,7 +121,7 @@ export function RealCountDisplay({ election, categories, voterCounts, isMain }: 
     const startDate = election.startDate ? new Date(election.startDate) : null;
     const endDate = election.endDate ? new Date(election.endDate) : null;
 
-    if (endDate && now > endDate) {
+    if (endDate && now >= endDate) {
       return <Badge variant="destructive">Berakhir</Badge>;
     }
     if (startDate && now >= startDate && endDate && now < endDate) {

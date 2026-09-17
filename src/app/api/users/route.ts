@@ -31,6 +31,28 @@ const userSchema = z.object({
   username: z.string().min(3),
   password: z.string().optional(),
   roleId: z.string().min(1),
+}).superRefine((data, ctx) => {
+  if (!data.isEditing && (!data.password || data.password.length < 6)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 6,
+      type: 'string',
+      inclusive: true,
+      path: ['password'],
+      message: 'Password wajib diisi minimal 6 karakter.',
+    });
+  }
+
+  if (data.isEditing && data.password && data.password.length < 6) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 6,
+      type: 'string',
+      inclusive: true,
+      path: ['password'],
+      message: 'Password minimal 6 karakter.',
+    });
+  }
 });
 
 export async function POST(request: Request) {
@@ -63,6 +85,7 @@ export async function POST(request: Request) {
         where: { id: userId },
         select: {
           id: true,
+          username: true,
           roleId: true,
         },
       });
@@ -81,6 +104,13 @@ export async function POST(request: Request) {
 
       if (!targetRole) {
         return NextResponse.json({ message: 'Peran pengguna tidak ditemukan.' }, { status: 404 });
+      }
+
+      if (existingUser.username === 'admin') {
+        return NextResponse.json(
+          { message: 'Akun "admin" tidak dapat diedit melalui fitur ini.' },
+          { status: 403 }
+        );
       }
 
       assertManageableRole(session.permissions, targetRole.permissions);
@@ -146,7 +176,7 @@ export async function POST(request: Request) {
           id: newUserId,
           username,
           roleId,
-          password: await hashPassword(password || Math.random().toString(36).slice(-8)),
+          password: await hashPassword(password!),
         }
       });
 

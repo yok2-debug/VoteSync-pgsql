@@ -5,6 +5,7 @@ import type { Election, Candidate } from '@/lib/types';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
+import { acquireElectionOperationLock } from '@/lib/election-lock';
 
 const electionIdSchema = z.string().min(1);
 
@@ -50,7 +51,7 @@ export async function getElections(): Promise<{ success: boolean; data?: Electio
             });
         }
 
-        const elections = electionsData.map((e: { id: string; name: string; description: string | null; startDate: string | null; endDate: string | null; status: string; useWitnesses: boolean; showInRealCount: boolean; isMainInRealCount: boolean }) => ({
+        const elections = electionsData.map((e: { id: string; name: string; description: string | null; startDate: string | null; endDate: string | null; status: string; useWitnesses: boolean; isMainInRealCount: boolean }) => ({
             id: e.id,
             name: e.name,
             description: e.description || undefined,
@@ -58,7 +59,6 @@ export async function getElections(): Promise<{ success: boolean; data?: Electio
             endDate: e.endDate || undefined,
             status: e.status as 'active' | 'pending',
             useWitnesses: e.useWitnesses || false,
-            showInRealCount: e.showInRealCount || false,
             isMainInRealCount: e.isMainInRealCount || false,
             candidates: candidatesByElection[e.id] || {},
         })) as Election[];
@@ -211,14 +211,6 @@ export async function updateElection(
         const validId = idResult.data;
         const validData = dataResult.data;
 
-        const existing = await prisma.election.findUnique({
-            where: { id: validId }
-        });
-
-        if (!existing) {
-            return { success: false, message: 'Pemilihan tidak ditemukan.' };
-        }
-
         const updateData: any = {};
         if (validData.name !== undefined) updateData.name = validData.name;
         if (validData.description !== undefined) updateData.description = validData.description || '';
@@ -227,10 +219,39 @@ export async function updateElection(
         if (validData.status !== undefined) updateData.status = validData.status;
         if (validData.useWitnesses !== undefined) updateData.useWitnesses = validData.useWitnesses;
 
-        await prisma.election.update({
-            where: { id: validId },
-            data: updateData
+        const electionEligibilityChanged =
+            validData.startDate !== undefined ||
+            validData.endDate !== undefined ||
+            validData.status !== undefined;
+
+        const updated = await prisma.$transaction(async (tx) => {
+            // Status and voting time changes affect whether voting is allowed.
+            // They must exclude voting transactions.
+            // Other election metadata can use the shared lock.
+            await acquireElectionOperationLock(
+                tx,
+                electionEligibilityChanged ? 'exclusive' : 'shared'
+            );
+
+            const existing = await tx.election.findUnique({
+                where: { id: validId }
+            });
+
+            if (!existing) {
+                return false;
+            }
+
+            await tx.election.update({
+                where: { id: validId },
+                data: updateData
+            });
+
+            return true;
         });
+
+        if (!updated) {
+            return { success: false, message: 'Pemilihan tidak ditemukan.' };
+        }
 
         logger.info({ electionId: id }, 'Election updated');
         return { success: true, message: 'Pemilihan berhasil diperbarui.' };
@@ -249,46 +270,67 @@ export async function deleteElection(id: string): Promise<{ success: boolean; me
         await verifyAdminSession('elections');
 
         const idResult = electionIdSchema.safeParse(id);
-        if (!idResult.success) return { success: false, message: 'Data tidak valid.' };
+        if (!idResult.success) {
+            return { success: false, message: 'Data tidak valid.' };
+        }
         const validId = idResult.data;
 
-        const existing = await prisma.election.findUnique({
-            where: { id: validId }
-        });
+        const deleted = await prisma.$transaction(async (tx) => {
+            // Serialize destructive election operations against voting.
+            await acquireElectionOperationLock(tx, 'exclusive');
 
-        if (!existing) {
-            return { success: false, message: 'Pemilihan tidak ditemukan.' };
-        }
+            const existing = await tx.election.findUnique({
+                where: { id: validId }
+            });
 
-        // Delete candidates first (cascade should handle this, but explicit is safer)
-        await prisma.candidate.deleteMany({
-            where: { electionId: validId }
-        });
-
-        // Delete votes for this election
-        await prisma.vote.deleteMany({
-            where: { electionId: validId }
-        });
-
-        // Delete the election
-        await prisma.election.delete({
-            where: { id: validId }
-        });
-
-        // Clean up orphaned election references in categories
-        const categories = await prisma.category.findMany();
-
-        if (categories) {
-            for (const category of categories) {
-                const allowedElections = category.allowedElections || [];
-                if (allowedElections.includes(validId)) {
-                    const updatedElections = allowedElections.filter((eId: string) => eId !== validId);
-                    await prisma.category.update({
-                        where: { id: category.id },
-                        data: { allowedElections: updatedElections }
-                    });
-                }
+            if (!existing) {
+                return false;
             }
+
+            // Delete votes first because they reference candidates.
+            await tx.vote.deleteMany({
+                where: { electionId: validId }
+            });
+
+            // Delete candidates belonging to this election.
+            await tx.candidate.deleteMany({
+                where: { electionId: validId }
+            });
+
+            // Remove the election from category allowedElections.
+            const categories = await tx.category.findMany({
+                where: {
+                    allowedElections: {
+                        has: validId
+                    }
+                },
+                select: {
+                    id: true,
+                    allowedElections: true
+                }
+            });
+
+            for (const category of categories) {
+                const updatedElections = category.allowedElections.filter(
+                    (electionId: string) => electionId !== validId
+                );
+
+                await tx.category.update({
+                    where: { id: category.id },
+                    data: { allowedElections: updatedElections }
+                });
+            }
+
+            // Delete the election itself.
+            await tx.election.delete({
+                where: { id: validId }
+            });
+
+            return true;
+        });
+
+        if (!deleted) {
+            return { success: false, message: 'Pemilihan tidak ditemukan.' };
         }
 
         logger.info({ electionId: id }, 'Election deleted');

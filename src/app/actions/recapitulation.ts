@@ -18,11 +18,7 @@ export interface RecapitulationStats {
 export async function getRecapitulationStats(electionId: string): Promise<{ success: boolean; data?: RecapitulationStats; message?: string }> {
     try {
         // Check for 'recapitulation' permission, but fall back to 'voters' if needed
-        try {
-            await verifyAdminSession('recapitulation');
-        } catch {
-            await verifyAdminSession('voters');
-        }
+        await verifyAdminSession('recapitulation');
 
         const electionIdResult = electionIdSchema.safeParse(electionId);
         if (!electionIdResult.success) {

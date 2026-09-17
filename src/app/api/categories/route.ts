@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { handleApiError, parseJsonBody, verifyAdminSession } from '../lib/api-helpers';
+import { acquireElectionOperationLock } from '@/lib/election-lock';
 
 const categorySchema = z.object({
   isEditing: z.boolean().optional(),
@@ -55,13 +56,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: 'ID Kategori wajib diisi untuk pengeditan.' }, { status: 400 });
       }
 
-      await prisma.category.update({
-        where: { id: categoryId },
-        data: {
-          name,
-          slug: name ? name.replace(/\s+/g, '').toLowerCase() : '',
-          allowedElections: allowedElections || [],
-        }
+      // Perubahan allowedElections memengaruhi hak suara.
+      // Serialize terhadap proses voting yang menggunakan shared lock.
+      await prisma.$transaction(async (tx) => {
+        await acquireElectionOperationLock(tx, 'exclusive');
+
+        await tx.category.update({
+          where: { id: categoryId },
+          data: {
+            name,
+            slug: name ? name.replace(/\s+/g, '').toLowerCase() : '',
+            allowedElections: allowedElections || [],
+          }
+        });
       });
 
       return NextResponse.json({ message: 'Kategori berhasil diperbarui', id: categoryId }, { status: 200 });
@@ -98,19 +105,34 @@ export async function DELETE(request: Request) {
 
     const { categoryId } = result.data;
 
-    // Check if category is in use by voters
-    const voters = await prisma.voter.findMany({
-      where: { categoryId },
-      select: { id: true }
+    const deleted = await prisma.$transaction(async (tx) => {
+      // Serialize category deletion against voting and other operations
+      // that can change voter eligibility.
+      await acquireElectionOperationLock(tx, 'exclusive');
+
+      // Check whether the category is currently assigned to any voter.
+      // The check and delete must occur under the same transaction/lock.
+      const voterCount = await tx.voter.count({
+        where: { categoryId }
+      });
+
+      if (voterCount > 0) {
+        return false;
+      }
+
+      await tx.category.delete({
+        where: { id: categoryId }
+      });
+
+      return true;
     });
 
-    if (voters && voters.length > 0) {
-      return NextResponse.json({ message: 'Kategori tidak dapat dihapus karena masih digunakan oleh pemilih.' }, { status: 409 });
+    if (!deleted) {
+      return NextResponse.json(
+        { message: 'Kategori tidak dapat dihapus karena masih digunakan oleh pemilih.' },
+        { status: 409 }
+      );
     }
-
-    await prisma.category.delete({
-      where: { id: categoryId }
-    });
 
     return NextResponse.json({ message: 'Kategori berhasil dihapus' }, { status: 200 });
   } catch (error) {

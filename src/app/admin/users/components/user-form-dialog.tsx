@@ -24,6 +24,26 @@ const userSchema = z.object({
   username: z.string().min(3, { message: 'Username minimal 3 karakter.' }),
   password: z.string().optional(),
   roleId: z.string().min(1, { message: 'Peran harus dipilih.' }),
+}).superRefine((data, ctx) => {
+  if (!data.password && !data.id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['password'],
+      message: 'Password wajib diisi minimal 6 karakter.',
+    });
+    return;
+  }
+
+  if (data.password && data.password.length < 6) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 6,
+      type: 'string',
+      inclusive: true,
+      path: ['password'],
+      message: 'Password minimal 6 karakter.',
+    });
+  }
 });
 
 type UserFormData = z.infer<typeof userSchema>;
@@ -111,7 +131,7 @@ export function UserFormDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" {...form.register('password')} className="w-full" placeholder={isEditing ? 'Kosongkan untuk tidak mengubah' : 'Kosongkan untuk generate otomatis'} />
+            <Input id="password" type="password" {...form.register('password')} className="w-full" placeholder={isEditing ? 'Kosongkan untuk tidak mengubah' : 'Masukkan password minimal 6 karakter'} />
             {form.formState.errors.password && (
               <p className="text-sm text-destructive mt-1">{form.formState.errors.password.message}</p>
             )}

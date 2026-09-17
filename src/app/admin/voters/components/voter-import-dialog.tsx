@@ -15,14 +15,13 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import type { Category, Voter } from '@/lib/types';
+import type { Category } from '@/lib/types';
 
 interface VoterImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   data: any[];
   categories: Category[];
-  existingVoters: Voter[];
   onSuccess: (data?: { voterId: string; password: string }[]) => Promise<void>;
 }
 
@@ -36,7 +35,7 @@ type ValidatedRow = {
 const normalizeCategory = (name: string) => name ? name.replace(/\s+/g, '').toLowerCase() : '';
 
 
-export function VoterImportDialog({ open, onOpenChange, data, categories, existingVoters, onSuccess }: VoterImportDialogProps) {
+export function VoterImportDialog({ open, onOpenChange, data, categories, onSuccess }: VoterImportDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validatedData, setValidatedData] = useState<ValidatedRow[]>([]);
   const { toast } = useToast();
@@ -52,10 +51,6 @@ export function VoterImportDialog({ open, onOpenChange, data, categories, existi
         return;
       }
 
-      const existingVoterIds = new Set(existingVoters.map(v => v.id));
-      const currentImportIds = new Set();
-
-
       const validated = filteredData.map(row => {
         const errors: string[] = [];
 
@@ -68,28 +63,7 @@ export function VoterImportDialog({ open, onOpenChange, data, categories, existi
           gender = 'Perempuan';
         }
 
-        let id = typedRow.id ? String(typedRow.id).trim() : '';
-        if (!id) {
-          const chars = 'ABCDEFGHJKMNPQRTUVWXY';
-          const generateId = () => {
-            let letters = '';
-            for (let i = 0; i < 2; i++) {
-              letters += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            const number = Math.floor(100000 + Math.random() * 900000);
-            return `${letters}-${number}`;
-          };
-
-          id = generateId();
-          let attempts = 0;
-          while ((existingVoterIds.has(id) || currentImportIds.has(id)) && attempts < 10) {
-            id = generateId();
-            attempts++;
-          }
-        }
-
         const cleanRow = {
-          id: id,
           nik: typedRow.nik ? String(typedRow.nik).trim() : '',
           name: typeof typedRow.name === 'string' ? typedRow.name.trim() : '',
           birthPlace: typeof typedRow.birthPlace === 'string' ? typedRow.birthPlace.trim() : '',
@@ -97,16 +71,7 @@ export function VoterImportDialog({ open, onOpenChange, data, categories, existi
           gender: gender,
           address: typeof typedRow.address === 'string' ? typedRow.address.trim() : '',
           category: typeof typedRow.category === 'string' ? typedRow.category.trim() : '',
-          password: typedRow.password ? String(typedRow.password).trim() : ''
         };
-
-        if (existingVoterIds.has(cleanRow.id)) {
-          errors.push(`ID '${cleanRow.id}' sudah ada di database.`);
-        } else if (currentImportIds.has(cleanRow.id)) {
-          errors.push(`ID duplikat '${cleanRow.id}' di dalam file impor ini.`);
-        } else {
-          currentImportIds.add(cleanRow.id);
-        }
 
         if (!cleanRow.name) {
           errors.push('Nama tidak boleh kosong.');
@@ -130,7 +95,7 @@ export function VoterImportDialog({ open, onOpenChange, data, categories, existi
     }
     validateData();
 
-  }, [data, open, categoryNameMap, existingVoters]);
+  }, [data, open, categoryNameMap]);
 
   const hasErrors = useMemo(() => validatedData.some(row => !row.isValid), [validatedData]);
   const validRowCount = useMemo(() => validatedData.filter(row => row.isValid).length, [validatedData]);
@@ -214,7 +179,7 @@ export function VoterImportDialog({ open, onOpenChange, data, categories, existi
                       </div>
                     )}
                   </TableCell>
-                  <TableCell>{row.data.id}</TableCell>
+                  <TableCell className="text-muted-foreground">Otomatis</TableCell>
                   <TableCell>{row.data.nik}</TableCell>
                   <TableCell>{row.data.name}</TableCell>
                   <TableCell>{row.data.category}</TableCell>

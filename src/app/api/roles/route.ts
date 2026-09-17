@@ -17,7 +17,6 @@ const permissionSchema = z.enum([
   'categories',
   'recapitulation',
   'real_count',
-  'settings',
   'users',
   'committees',
 ]);
@@ -30,7 +29,6 @@ const ALL_PERMISSIONS = [
   'categories',
   'recapitulation',
   'real_count',
-  'settings',
   'users',
   'committees',
 ] as const;

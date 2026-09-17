@@ -5,6 +5,7 @@ import type { Category } from '@/lib/types';
 import { verifyAdminSession } from '@/app/api/lib/api-helpers';
 import { logger } from '@/lib/logger';
 import { z } from 'zod';
+import { acquireElectionOperationLock } from '@/lib/election-lock';
 
 const categoryIdSchema = z.string().min(1);
 
@@ -138,17 +139,29 @@ export async function deleteCategory(id: string): Promise<{ success: boolean; me
         }
         const validId = idResult.data;
 
-        const existing = await prisma.category.findUnique({
-            where: { id: validId }
+        const deleted = await prisma.$transaction(async (tx) => {
+            // Deleting a category can change voter eligibility through
+            // Voter.categoryId (onDelete: SetNull). Serialize it against voting.
+            await acquireElectionOperationLock(tx, 'exclusive');
+
+            const existing = await tx.category.findUnique({
+                where: { id: validId }
+            });
+
+            if (!existing) {
+                return false;
+            }
+
+            await tx.category.delete({
+                where: { id: validId }
+            });
+
+            return true;
         });
 
-        if (!existing) {
+        if (!deleted) {
             return { success: false, message: 'Kategori tidak ditemukan.' };
         }
-
-        await prisma.category.delete({
-            where: { id: validId }
-        });
 
         logger.info({ categoryId: validId }, 'Category deleted');
         return { success: true, message: 'Kategori berhasil dihapus.' };

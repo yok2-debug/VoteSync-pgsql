@@ -36,7 +36,6 @@ const permissionRedirectOrder: { permission: Permission; path: string }[] = [
   { permission: 'voters', path: '/admin/voters' },
   { permission: 'categories', path: '/admin/categories' },
   { permission: 'users', path: '/admin/users' },
-  { permission: 'settings', path: '/admin/settings' },
 ];
 
 function getRedirectPath(permissions: Permission[]): string | null {

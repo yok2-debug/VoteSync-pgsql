@@ -29,7 +29,6 @@ const ALL_PERMISSIONS: { id: Permission, label: string }[] = [
   { id: 'recapitulation', label: 'Manajemen Rekapitulasi' },
   { id: 'real_count', label: 'Pengaturan Real Count' },
   { id: 'users', label: 'Manajemen Pengguna' },
-  { id: 'settings', label: 'Manajemen Pengaturan' },
 ];
 
 const roleSchema = z.object({
